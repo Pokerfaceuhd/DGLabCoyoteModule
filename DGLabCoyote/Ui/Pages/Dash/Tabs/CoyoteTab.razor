@@ -1,0 +1,64 @@
+﻿@using OpenShock.Desktop.ModuleBase
+@using OpenShock.Desktop.ModuleBase.Config
+@using DGLabCoyote.Config
+@using DGLabCoyote.Services
+@using InTheHand.Bluetooth
+@implements IAsyncDisposable
+
+@page "/dash/coyote"
+
+<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
+    
+    <MudButton OnClick="GetBluetoothDevices" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary" Style="margin-right: 10px;">Get Bluetooth Devices</MudButton>
+    <MudSelect T="string?" Variant="Variant.Outlined" @bind-Value="_selectedSerialPort" Label="Serial Port" @bind-Value:after="SelectedBluetoothDeviceChanged">
+        @foreach (var port in _serialPorts)
+        {
+            <MudSelectItem Value="@port">@port</MudSelectItem>
+        }
+    </MudSelect>
+    @if (_selectedBluetoothDevice == String.Empty)
+    {
+        <MudAlert Severity="Severity.Warning">Please selected a Bluetooth Device</MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Success"></MudAlert>
+    }
+    
+    
+</MudPaper>
+@code {
+    [ModuleInject] private FlowManager FlowManager { get; set; } = null!;
+    [ModuleInject] private BluetoothService BluetoothService{ get; set; } = null!;
+    [ModuleInject] private IModuleConfig<DgLabCoyoteConfig> ModuleConfig { get; set; } = null!;
+
+    private string? _selectedBluetoothDevice;
+    
+    private IReadOnlyCollection<BluetoothDevice> _bluetoothDevices = new List<BluetoothDevice>();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedBluetoothDevice = ModuleConfig.Config.BluetoothConnection.CoyoteAddress;
+    }
+    
+    private async Task GetBluetoothDevices()
+    {
+        _bluetoothDevices = await BluetoothService.GetBluetoothDevices();
+    }
+
+    private async Task SelectedBluetoothDeviceChanged()
+    {
+        
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+
+    }
+    
+    private void OnSettingsValueChange()
+    {
+        ModuleConfig.SaveDeferred();
+    }
+}
+
