@@ -17,18 +17,20 @@
     
         <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
             <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
-            @foreach (var device in OpenShockService.Data.Hubs.Value)
+            @foreach (var port in OpenShockService.Data.Hubs.Value)
             {
-                <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
+                <MudSelectItem Value="@port.Id">@port.Name</MudSelectItem>
             }
         </MudSelect>
         
     </span>
+    
+
     <div>
         <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
         @FlowManager.DeviceConnectionState.Value
     </div>
-    
+
     <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
         <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" Label="Channel A Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
         <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" Label="Channel B Shocker Id" @bind-Value:after="OnSettingsValueChange"/>

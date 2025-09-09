@@ -3,28 +3,17 @@
 @using DGLabCoyote.Config
 @using DGLabCoyote.Services
 @using InTheHand.Bluetooth
+@using LucHeart.WebsocketLibrary
 @implements IAsyncDisposable
 
 @page "/dash/coyote"
 
 <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
     
-    <MudButton OnClick="GetBluetoothDevices" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary" Style="margin-right: 10px;">Get Bluetooth Devices</MudButton>
-    <MudSelect T="string?" Variant="Variant.Outlined" @bind-Value="_selectedSerialPort" Label="Serial Port" @bind-Value:after="SelectedBluetoothDeviceChanged">
-        @foreach (var port in _serialPorts)
-        {
-            <MudSelectItem Value="@port">@port</MudSelectItem>
-        }
-    </MudSelect>
-    @if (_selectedBluetoothDevice == String.Empty)
-    {
-        <MudAlert Severity="Severity.Warning">Please selected a Bluetooth Device</MudAlert>
-    }
-    else
-    {
-        <MudAlert Severity="Severity.Success"></MudAlert>
-    }
+    <MudButton OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary" Style="margin-right: 10px;">Find Coyote</MudButton>
     
+    <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+    @FlowManager.DeviceConnectionState.Value
     
 </MudPaper>
 @code {
@@ -35,17 +24,30 @@
     private string? _selectedBluetoothDevice;
     
     private IReadOnlyCollection<BluetoothDevice> _bluetoothDevices = new List<BluetoothDevice>();
+    private IAsyncDisposable _flowUpdatedSubscription = null!;
+
     
     protected override async Task OnInitializedAsync()
     {
         _selectedBluetoothDevice = ModuleConfig.Config.BluetoothConnection.CoyoteAddress;
+        
+        _flowUpdatedSubscription = await FlowManager.CoyoteConnectionState.Updated.SubscribeAsync(state => InvokeAsync(StateHasChanged));
     }
     
-    private async Task GetBluetoothDevices()
+    private async Task FindCoyote()
     {
         _bluetoothDevices = await BluetoothService.GetBluetoothDevices();
     }
-
+    
+    private static Color GetConnectionStateColor(WebsocketConnectionState state) =>
+        state switch
+        {
+            WebsocketConnectionState.Connected => Color.Success,
+            WebsocketConnectionState.Connecting => Color.Warning,
+            WebsocketConnectionState.WaitingForReconnect => Color.Tertiary,
+            _ => Color.Error
+        };
+    
     private async Task SelectedBluetoothDeviceChanged()
     {
         
