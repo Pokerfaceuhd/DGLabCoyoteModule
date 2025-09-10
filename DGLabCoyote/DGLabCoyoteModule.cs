@@ -27,9 +27,9 @@ public class DGLabCoyoteModule : DesktopModuleBase
         },
         new()
         {
-            Name = "Serial",
+            Name = "Coyote",
             ComponentType = typeof(CoyoteTab),
-            Icon = IconOneOf.FromSvg(Icons.Material.Filled.VoiceChat)
+            Icon = IconOneOf.FromSvg(Icons.Material.Filled.ElectricBolt)
         }
     ];
     

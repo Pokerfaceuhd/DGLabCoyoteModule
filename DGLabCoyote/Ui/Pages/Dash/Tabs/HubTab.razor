@@ -17,9 +17,9 @@
     
         <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
             <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
-            @foreach (var port in OpenShockService.Data.Hubs.Value)
+            @foreach (var device in OpenShockService.Data.Hubs.Value)
             {
-                <MudSelectItem Value="@port.Id">@port.Name</MudSelectItem>
+                <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
             }
         </MudSelect>
         

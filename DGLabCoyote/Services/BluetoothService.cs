@@ -10,9 +10,9 @@ public sealed class BluetoothService : IDisposable
 
     }
 
-    public async Task<IReadOnlyCollection<BluetoothDevice>> GetBluetoothDevices()
+    public static async Task<IReadOnlyCollection<BluetoothDevice>> GetBluetoothDevices(CancellationToken cancellationToken)
     {
-        return await Bluetooth.ScanForDevicesAsync();
+        return await Bluetooth.ScanForDevicesAsync(cancellationToken:cancellationToken);
     }
 
     public void Dispose()

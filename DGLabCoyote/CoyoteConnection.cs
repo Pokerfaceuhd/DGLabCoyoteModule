@@ -27,7 +27,7 @@ public class CoyoteConnection
     private static readonly BluetoothUuid WaveformReadCharacteristicId = BluetoothUuid.FromShortId(0x150B);
     private static readonly BluetoothUuid WaveformWriteCharacteristicId = BluetoothUuid.FromShortId(0x150A);
 
-    public static readonly int TimeMsBetweenPackets = 90;
+    public static readonly int TimeMsBetweenPackets = 100;
     
     private GattCharacteristic? _waveformWriteCharacteristic;
     
@@ -40,7 +40,7 @@ public class CoyoteConnection
     private readonly List<SingleChannelWaveformSeries> _waveformPacketQueue = new List<SingleChannelWaveformSeries>();
     
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _state =
-        new(WebsocketConnectionState.Disconnected);
+        new(WebsocketConnectionState.NotStarted);
 
     public IAsyncUpdatable<WebsocketConnectionState> State => _state;
     
@@ -56,6 +56,8 @@ public class CoyoteConnection
 
     public async Task OpenAsync()
     {
+        _state.Value = WebsocketConnectionState.Connected;
+        _logger.LogDebug($"Opening connection to coyote {_deviceId}");
         _device = await BluetoothDevice.FromIdAsync(_deviceId);
 
         if (_device == null)
@@ -73,8 +75,6 @@ public class CoyoteConnection
         
         _logger.LogInformation("Pairing with device: {DeviceName}", _device.Name);
         await _device.Gatt.ConnectAsync();
-
-        OsTask.Run(WriteLoop);
         
         _device.GattServerDisconnected += GattServerDisconnected;
 
@@ -85,10 +85,14 @@ public class CoyoteConnection
         
         waveformReadCharacteristic.CharacteristicValueChanged += ReadBack;
         await waveformReadCharacteristic.StartNotificationsAsync();
+        _state.Value = WebsocketConnectionState.Connected;
+        
+        OsTask.Run(WriteLoop);
     }
 
     private void GattServerDisconnected(object? sender, EventArgs e)
     {
+        _state.Value = WebsocketConnectionState.Disconnected;
         _ = OpenAsync();
     }
 
@@ -102,6 +106,7 @@ public class CoyoteConnection
     
     public async Task WriteLoop()
     {
+        _incomingWaveformPackets.Clear();
         try
         {
             byte number = 0;
@@ -122,13 +127,19 @@ public class CoyoteConnection
                 }
 
                 var command = waveformBuilder.ConvertToCommand(number);
-                
+
                 number++;
                 if (number > 0b1111)
                 {
                     number = 0;
                 }
-
+                
+                var output = "";
+                foreach (var b in command)
+                {
+                    output += $"{b} ";
+                }
+                _logger.LogInformation(output);
                 await _waveformWriteCharacteristic!.WriteValueWithoutResponseAsync(command);
             }
         }

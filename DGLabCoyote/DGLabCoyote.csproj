@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <SingleProject>true</SingleProject>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>DGLabCoyote</RootNamespace>
@@ -31,4 +31,11 @@
     <PropertyGroup>
         <ServerGarbageCollection>false</ServerGarbageCollection>
     </PropertyGroup>
+
+    <Target Name="CopyOwnDllOnly" AfterTargets="Build">
+        <ItemGroup>
+            <OwnDll Include="$(TargetPath)" />
+        </ItemGroup>
+        <Copy SourceFiles="@(OwnDll)" DestinationFolder="C:\Users\Luna\AppData\Roaming\OpenShock\Desktop\modules\DGLabCoyote" />
+    </Target>
 </Project>

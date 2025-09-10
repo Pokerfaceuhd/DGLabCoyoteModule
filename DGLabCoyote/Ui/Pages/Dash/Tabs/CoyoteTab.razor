@@ -9,19 +9,28 @@
 @page "/dash/coyote"
 
 <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
+    <MudButton Disabled="@_searching" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary">Find Coyote</MudButton>
+    <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
     
-    <MudButton OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary" Style="margin-right: 10px;">Find Coyote</MudButton>
+    @_bluetoothOutput
     
-    <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
-    @FlowManager.DeviceConnectionState.Value
+    <br>
+    <div>
+        <MudIcon Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+        @FlowManager.CoyoteConnectionState.Value
+    </div>
     
 </MudPaper>
 @code {
     [ModuleInject] private FlowManager FlowManager { get; set; } = null!;
-    [ModuleInject] private BluetoothService BluetoothService{ get; set; } = null!;
+    [ModuleInject] private BluetoothService BluetoothService { get; set; } = null!;
     [ModuleInject] private IModuleConfig<DgLabCoyoteConfig> ModuleConfig { get; set; } = null!;
-
-    private string? _selectedBluetoothDevice;
+    
+    private string _bluetoothOutput = "Click on Find Coyote to connect";
+    
+    CancellationTokenSource _token = new();
+    
+    private Boolean _searching = false;
     
     private IReadOnlyCollection<BluetoothDevice> _bluetoothDevices = new List<BluetoothDevice>();
     private IAsyncDisposable _flowUpdatedSubscription = null!;
@@ -29,14 +38,24 @@
     
     protected override async Task OnInitializedAsync()
     {
-        _selectedBluetoothDevice = ModuleConfig.Config.BluetoothConnection.CoyoteAddress;
-        
         _flowUpdatedSubscription = await FlowManager.CoyoteConnectionState.Updated.SubscribeAsync(state => InvokeAsync(StateHasChanged));
     }
     
     private async Task FindCoyote()
     {
-        _bluetoothDevices = await BluetoothService.GetBluetoothDevices();
+        _bluetoothOutput = "Searching...";
+        _searching = true;
+        _bluetoothDevices = await BluetoothService.GetBluetoothDevices(_token.Token);
+        _searching = false;
+        try
+        {
+            _bluetoothOutput = "Found a Coyote V3";
+            await FlowManager.ConnectCoyote(_bluetoothDevices.First(device => device.Name == "47L121000").Id);
+        }
+        catch (InvalidOperationException)
+        {
+            _bluetoothOutput = "Couldnt find Coyote V3";
+        }
     }
     
     private static Color GetConnectionStateColor(WebsocketConnectionState state) =>
@@ -48,14 +67,9 @@
             _ => Color.Error
         };
     
-    private async Task SelectedBluetoothDeviceChanged()
-    {
-        
-    }
-    
     public async ValueTask DisposeAsync()
     {
-
+        await _token.CancelAsync();
     }
     
     private void OnSettingsValueChange()

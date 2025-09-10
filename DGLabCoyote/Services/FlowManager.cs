@@ -1,11 +1,13 @@
 ﻿using DGLabCoyote.Config;
 using DGLabCoyote.Models.Coyote;
+using InTheHand.Bluetooth;
 using LucHeart.WebsocketLibrary;
 using Microsoft.Extensions.Logging;
 using OpenShock.Desktop.ModuleBase.Api;
 using OpenShock.Desktop.ModuleBase.Config;
 using OpenShock.SDK.CSharp.Updatables;
 using OpenShock.Serialization.Gateway;
+using OpenShock.Serialization.Types;
 
 namespace DGLabCoyote.Services;
 
@@ -49,13 +51,6 @@ public class FlowManager
     {
         if (_config.Config.Hub.Hub != null)
             await SelectedDeviceChanged(_config.Config.Hub.Hub.Value);
-
-        var bluetoothConfig = _config.Config.BluetoothConnection;
-
-        if (bluetoothConfig.AutoConnect && bluetoothConfig.CoyoteAddress != String.Empty)
-        {
-            await ConnectCoyote(bluetoothConfig.CoyoteAddress);
-        }
     }
     
     public async Task SelectedDeviceChanged(Guid id)
@@ -131,12 +126,13 @@ public class FlowManager
 
     private async Task OnControlMessage(ShockerCommandList commandList)
     {
+        _logger.LogInformation("Received ControlMessage");
         if (CoyoteConnection == null) return;
         
         var hubConfig = _config.Config.Hub;
         
         var packetTasks = commandList.Commands
-            .SkipWhile(command => command.Id != hubConfig.ChannelAId || command.Id != hubConfig.ChannelBId)
+            .SkipWhile(command => command.Type != ShockerCommandType.Shock || command.Id != hubConfig.ChannelAId || command.Id != hubConfig.ChannelBId)
             .Select(command =>
             {
                 Channel channel;
