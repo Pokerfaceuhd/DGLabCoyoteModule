@@ -1,0 +1,144 @@
+@inject ILogger<Settings> Logger
+@using System.DirectoryServices.ActiveDirectory
+@using DGLabCoyote.Config
+@using LucHeart.WebsocketLibrary
+@using Microsoft.Extensions.Logging
+@using OpenShock.Desktop.ModuleBase
+@using OpenShock.Desktop.ModuleBase.Api
+@using DGLabCoyote.Services
+@using InTheHand.Bluetooth
+@using OpenShock.Desktop.ModuleBase.Config
+@using OpenShock.SDK.CSharp.Live.LiveControlModels
+@implements IAsyncDisposable
+
+@page "/dash/hub"
+
+<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
+
+    <span>
+    
+        <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
+            <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
+            @foreach (var device in OpenShockService.Data.Hubs.Value)
+            {
+                <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
+            }
+        </MudSelect>
+        
+    </span>
+    
+    <div>
+        <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+        @FlowManager.DeviceConnectionState.Value
+    </div>
+    
+
+        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
+            <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" Label="Channel A Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
+            <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" Label="Channel B Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
+        </MudPaper>
+        
+    <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">    
+        <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary">Find Coyote</MudButton>
+        <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
+        
+        @_bluetoothSearchOutput
+        <br>
+        <div>
+            <MudIcon Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+            @FlowManager.CoyoteConnectionState.Value
+        </div>
+        
+        <MudSlider Step="1" Value="@_frequencySlider" Min="10" Max="240" Size="Size.Medium" ValueChanged="@(EventCallback.Factory.Create<int>(this, OnSettingsValueChangeInt))">Frequency</MudSlider>
+    </MudPaper>
+</MudPaper>
+
+@code {
+
+    [ModuleInject] private IOpenShockService OpenShockService { get; set; } = null!;
+    [ModuleInject] private FlowManager FlowManager { get; set; } = null!;
+    [ModuleInject] private BluetoothService BluetoothService { get; set; } = null!;
+    [ModuleInject] private IModuleConfig<DgLabCoyoteConfig> ModuleConfig { get; set; } = null!;
+    
+    private Guid _selectedDevice = Guid.Empty;
+    private IAsyncDisposable _flowUpdatedSubscription = null!;
+    private int _frequencySlider;
+    
+    private string _bluetoothSearchOutput = "Click on Find Coyote to connect";
+    private readonly CancellationTokenSource _token = new();
+    
+    private Boolean _searching = false;
+    private Boolean _disableButton = false;
+    
+    private IReadOnlyCollection<BluetoothDevice> _bluetoothDevices = new List<BluetoothDevice>();
+    private IAsyncDisposable _flowUpdatedSubscriptionCoyote = null!;
+    
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _frequencySlider = ModuleConfig.Config.BluetoothConnection.Frequency;
+        _selectedDevice = FlowManager.HubId;
+        
+        _disableButton = FlowManager.CoyoteConnectionState.Value is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
+        
+        _flowUpdatedSubscription = await FlowManager.DeviceConnectionState.Updated.SubscribeAsync(state => InvokeAsync(StateHasChanged));
+        _flowUpdatedSubscriptionCoyote = await FlowManager.CoyoteConnectionState.Updated.SubscribeAsync(state =>
+        {
+            _disableButton = state is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
+            return InvokeAsync(StateHasChanged);
+        });
+    }
+    
+    private static Color GetConnectionStateColor(WebsocketConnectionState state) =>
+        state switch
+        {
+            WebsocketConnectionState.Connected => Color.Success,
+            WebsocketConnectionState.Connecting => Color.Warning,
+            WebsocketConnectionState.WaitingForReconnect => Color.Tertiary,
+            _ => Color.Error
+        };
+    
+    private async Task FindCoyote()
+    {
+        _bluetoothSearchOutput = "Searching...";
+        _searching = true;
+        _bluetoothDevices = await BluetoothService.GetBluetoothDevices(_token.Token);
+        _searching = false;
+        try
+        {
+            _bluetoothSearchOutput = "Found a Coyote V3";
+            var deviceId = _bluetoothDevices.First(device => device.Name == "47L121000").Id;
+            ModuleConfig.Config.BluetoothConnection.CoyoteAddress = deviceId;
+            ModuleConfig.SaveDeferred();
+            await FlowManager.ConnectCoyote();
+        }
+        catch (InvalidOperationException)
+        {
+            _bluetoothSearchOutput = "Couldnt find Coyote V3";
+        }
+    }
+    
+    private async Task SelectedDeviceChanged()
+    {
+        await FlowManager.SelectedDeviceChanged(_selectedDevice);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _flowUpdatedSubscription.DisposeAsync();
+        await _flowUpdatedSubscriptionCoyote.DisposeAsync();
+        await _token.CancelAsync();
+    }
+    
+    private void OnSettingsValueChange()
+    {
+        ModuleConfig.SaveDeferred();
+    }
+    
+    private void OnSettingsValueChangeInt(int i)
+    {
+        _frequencySlider = i;
+        ModuleConfig.Config.BluetoothConnection.Frequency = (byte)i;
+        ModuleConfig.SaveDeferred();
+    }
+}

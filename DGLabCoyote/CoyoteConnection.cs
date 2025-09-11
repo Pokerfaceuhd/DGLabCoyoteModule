@@ -17,6 +17,7 @@ namespace DGLabCoyote;
 public class CoyoteConnection
 {
     private readonly ILogger<CoyoteConnection> _logger;
+    private IModuleConfig<DgLabCoyoteConfig> _config;
     private BluetoothDevice? _device;
     private readonly String _deviceId;
     private readonly CancellationTokenSource _disposeCts = new();
@@ -28,6 +29,11 @@ public class CoyoteConnection
     private static readonly BluetoothUuid WaveformWriteCharacteristicId = BluetoothUuid.FromShortId(0x150A);
 
     public static readonly int TimeMsBetweenPackets = 100;
+    private byte _number = 0;
+    private byte _cStrengthA = 0;
+    private byte _cStrengthB = 0;
+    
+    private SemaphoreSlim _packetSemaphore = new SemaphoreSlim(0, 1);
     
     private GattCharacteristic? _waveformWriteCharacteristic;
     
@@ -46,17 +52,19 @@ public class CoyoteConnection
     
     public CoyoteConnection(
         ILogger<CoyoteConnection> logger,
+        IModuleConfig<DgLabCoyoteConfig> config,
         String deviceId)
     {
         _logger = logger;
         _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+        _config = config;
         
         _deviceId = deviceId;
     }
 
     public async Task OpenAsync()
     {
-        _state.Value = WebsocketConnectionState.Connected;
+        _state.Value = WebsocketConnectionState.Connecting;
         _logger.LogDebug($"Opening connection to coyote {_deviceId}");
         _device = await BluetoothDevice.FromIdAsync(_deviceId);
 
@@ -75,6 +83,7 @@ public class CoyoteConnection
         
         _logger.LogInformation("Pairing with device: {DeviceName}", _device.Name);
         await _device.Gatt.ConnectAsync();
+        _state.Value = WebsocketConnectionState.Connected;
         
         _device.GattServerDisconnected += GattServerDisconnected;
 
@@ -85,7 +94,6 @@ public class CoyoteConnection
         
         waveformReadCharacteristic.CharacteristicValueChanged += ReadBack;
         await waveformReadCharacteristic.StartNotificationsAsync();
-        _state.Value = WebsocketConnectionState.Connected;
         
         OsTask.Run(WriteLoop);
     }
@@ -96,51 +104,55 @@ public class CoyoteConnection
         _ = OpenAsync();
     }
 
-    public void ReadBack(object? sender, GattCharacteristicValueChangedEventArgs e)
+    private void ReadBack(object? sender, GattCharacteristicValueChangedEventArgs e)
     {
-        string value = e.Value
-            .Select(value => value.ToString())
-            .Aggregate((total, value) => total + " " + value);
-        _logger.LogInformation("Read back at: {value}", value);
+        var receivedNumber = e.Value[1];
+        if (_number != receivedNumber)
+        {
+            if (e.Value.Length == 6)
+            {
+                _packetSemaphore.Release();
+            }
+        }
+        else
+        {
+            _packetSemaphore.Release();
+        }
     }
-    
-    public async Task WriteLoop()
+
+    private async Task WriteLoop()
     {
         _incomingWaveformPackets.Clear();
+        DateTimeOffset time = DateTimeOffset.Now;
+        int countPerSecond = 0;
         try
         {
-            byte number = 0;
-            while (await _timer.WaitForNextTickAsync(_linkedCts.Token))
+            while (await _timer.WaitForNextTickAsync())
             {
                 while (_incomingWaveformPackets.TryDequeue(out var waveformPacket))
                     _waveformPacketQueue.Add(waveformPacket);
                 
-                var now = DateTime.UtcNow;
-                
                 _waveformPacketQueue.RemoveAll(ps => ps.ChannelWaveforms.Count == 0);
                 var currentTickWaveforms = _waveformPacketQueue.Select(ps => ps.ChannelWaveforms.Dequeue());
                 
-                WaveformBuilder waveformBuilder = new();
+                WaveformBuilder waveformBuilder = new(_cStrengthA, _cStrengthB, _config.Config.BluetoothConnection.Frequency);
                 foreach (var waveform in currentTickWaveforms)
                 {
                     waveformBuilder.AddChannelWaveform(waveform);
                 }
 
-                var command = waveformBuilder.ConvertToCommand(number);
-
-                number++;
-                if (number > 0b1111)
-                {
-                    number = 0;
-                }
+                _cStrengthA = waveformBuilder._strengthA;
+                _cStrengthB = waveformBuilder._strengthB;
                 
-                var output = "";
-                foreach (var b in command)
-                {
-                    output += $"{b} ";
-                }
-                _logger.LogInformation(output);
+                var command = waveformBuilder.ConvertToCommand(_number);
+                
                 await _waveformWriteCharacteristic!.WriteValueWithoutResponseAsync(command);
+                
+                _number++;
+                if (_number > 0b1111)
+                {
+                    _number = 1;
+                }
             }
         }
         catch (OperationCanceledException)

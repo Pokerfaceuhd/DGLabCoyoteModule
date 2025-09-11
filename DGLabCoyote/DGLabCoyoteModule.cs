@@ -21,15 +21,9 @@ public class DGLabCoyoteModule : DesktopModuleBase
     [
         new()
         {
-            Name = "Hub",
-            ComponentType = typeof(HubTab),
-            Icon = IconOneOf.FromSvg(Icons.Material.Filled.Hub)
-        },
-        new()
-        {
-            Name = "Coyote",
-            ComponentType = typeof(CoyoteTab),
-            Icon = IconOneOf.FromSvg(Icons.Material.Filled.ElectricBolt)
+            Name = "Settings",
+            ComponentType = typeof(Settings),
+            Icon = IconOneOf.FromSvg(Icons.Material.Filled.Settings)
         }
     ];
     

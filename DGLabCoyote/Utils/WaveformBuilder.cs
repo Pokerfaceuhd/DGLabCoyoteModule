@@ -6,9 +6,9 @@ public class WaveformBuilder
 {
     private static byte _head = 0xB0;
     
-    private byte _strengthA;
+    public byte _strengthA;
     
-    private byte _strengthB;
+    public byte _strengthB;
     
     private byte[] _frequencyA;
     
@@ -18,12 +18,13 @@ public class WaveformBuilder
     
     private readonly byte[] _intensityB;
 
-    public WaveformBuilder()
+    private bool changedStrength = false;
+    public WaveformBuilder(byte strengthA, byte strengthB, byte frequency)
     {
-        _strengthA = 0;
-        _strengthB = 0;
-        _frequencyA = [100,100,100,100];
-        _frequencyB = [100,100,100,100];
+        _strengthA = strengthA;
+        _strengthB = strengthB;
+        _frequencyA = [frequency,frequency,frequency,frequency];
+        _frequencyB = [frequency,frequency,frequency,frequency];
         _intensityA = [0,0,0,0];
         _intensityB = [0,0,0,0];
     }
@@ -32,16 +33,21 @@ public class WaveformBuilder
     {
         if (singleChannelWaveform.Channel == Channel.A)
         {
-            _strengthA = Math.Max(_strengthA, singleChannelWaveform.Strength);
             for (int i = 0; i < singleChannelWaveform.Intensity.Length; i++)
                 _intensityA[i] = Math.Max(_intensityA[i], singleChannelWaveform.Intensity[i]);
+            
+            if (singleChannelWaveform.Strength <= _strengthA) return;
+            _strengthA = singleChannelWaveform.Strength;
         }
         else
         {
-            _strengthB = Math.Max(_strengthB, singleChannelWaveform.Strength);
             for (int i = 0; i < singleChannelWaveform.Intensity.Length; i++)
                 _intensityB[i] = Math.Max(_intensityB[i], singleChannelWaveform.Intensity[i]);
+            
+            if (singleChannelWaveform.Strength <= _strengthB) return;
+            _strengthB = singleChannelWaveform.Strength;
         }
+        changedStrength = true;
     }
 
     public void ChangeFrequency(byte[] frequencyA, byte[] frequencyB)
@@ -54,7 +60,13 @@ public class WaveformBuilder
     {
         byte[] data = new byte[20];
 
-        byte numberAndStrengthInterpretation = (byte)(number << 4 | 0b1111);
+        byte strengthInterpretation = 0b0000;
+        if (changedStrength)
+        {
+            strengthInterpretation = 0b1111;
+        }
+        
+        byte numberAndStrengthInterpretation = (byte)(number << 4 | strengthInterpretation);
 
         data[0] = _head;
         data[1] = numberAndStrengthInterpretation;

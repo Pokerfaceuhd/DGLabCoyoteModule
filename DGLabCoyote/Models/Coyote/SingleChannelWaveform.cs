@@ -10,7 +10,7 @@ public struct SingleChannelWaveform
     
     public SingleChannelWaveform(byte strength, byte[] intensity, Channel channel)
     {
-        Strength = strength;
+        Strength = 100;
         Intensity = intensity;
         Channel = channel;
     }
@@ -21,14 +21,14 @@ public struct SingleChannelWaveform
         for (byte i = 0; i < amountOfSegments; i++)
             intensityArray[i] = strength;
         
-        Strength = strength;
+        Strength = 100;
         Intensity = intensityArray;
         Channel = channel;
     }
     
     public SingleChannelWaveform(byte strength, Channel channel)
     {
-        Strength = strength;
+        Strength = 100;
         Intensity = [strength,strength,strength,strength];
         Channel = channel;
     }

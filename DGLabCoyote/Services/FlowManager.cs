@@ -49,6 +49,9 @@ public class FlowManager
     
     public async Task LoadConfigAndStart()
     {
+        if (_config.Config.BluetoothConnection.CoyoteAddress != string.Empty)
+            await ConnectCoyote();
+        
         if (_config.Config.Hub.Hub != null)
             await SelectedDeviceChanged(_config.Config.Hub.Hub.Value);
     }
@@ -126,13 +129,12 @@ public class FlowManager
 
     private async Task OnControlMessage(ShockerCommandList commandList)
     {
-        _logger.LogInformation("Received ControlMessage");
         if (CoyoteConnection == null) return;
         
         var hubConfig = _config.Config.Hub;
         
         var packetTasks = commandList.Commands
-            .SkipWhile(command => command.Type != ShockerCommandType.Shock || command.Id != hubConfig.ChannelAId || command.Id != hubConfig.ChannelBId)
+            .SkipWhile(command => command.Type != ShockerCommandType.Shock || command.Id != hubConfig.ChannelAId && command.Id != hubConfig.ChannelBId)
             .Select(command =>
             {
                 Channel channel;
@@ -141,19 +143,19 @@ public class FlowManager
                 return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, command.Duration, command.Intensity));
             }
         );
-
         await Task.WhenAll(packetTasks);
     }
 
-    public async Task ConnectCoyote(string coyoteAddress)
+    public async Task ConnectCoyote()
     {
+        var coyoteAddress = _config.Config.BluetoothConnection.CoyoteAddress;
         if (CoyoteConnection != null)
         {
             await CoyoteConnection.DisposeAsync();
             CoyoteConnection = null;
         }
 
-        CoyoteConnection = new CoyoteConnection(_coyoteConnectionLogger, coyoteAddress);
+        CoyoteConnection = new CoyoteConnection(_coyoteConnectionLogger, _config, coyoteAddress);
         
         await CoyoteConnection.State.Updated.SubscribeAsync(state =>
         {
