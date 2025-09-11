@@ -48,6 +48,7 @@
     
     <ItemGroup>
         <None Remove="Resources\DgLabModule-Icon.png" />
+        <EmbeddedResource Include="Resources\DgLabModule-Icon.png" />
     </ItemGroup>
 
     <PropertyGroup>
