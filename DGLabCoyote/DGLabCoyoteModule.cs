@@ -15,7 +15,7 @@ namespace DGLabCoyote;
 
 public class DGLabCoyoteModule : DesktopModuleBase
 {
-    public override string IconPath => "DGLabCoyote/Resources/DGLabCoyote-Icon.png";
+    public override string IconPath => "DGLabCoyote/Resources/DgLabModule-Icon.png";
     
     public override IReadOnlyCollection<NavigationItem> NavigationComponents { get; } =
     [
