@@ -1,55 +1,56 @@
-@inject ILogger<Settings> Logger
-@using System.DirectoryServices.ActiveDirectory
 @using DGLabCoyote.Config
 @using LucHeart.WebsocketLibrary
-@using Microsoft.Extensions.Logging
 @using OpenShock.Desktop.ModuleBase
 @using OpenShock.Desktop.ModuleBase.Api
 @using DGLabCoyote.Services
 @using InTheHand.Bluetooth
 @using OpenShock.Desktop.ModuleBase.Config
-@using OpenShock.SDK.CSharp.Live.LiveControlModels
 @implements IAsyncDisposable
 
 @page "/dash/hub"
 
-<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
+<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="display: flex; gap:16px;">
+    <div style="flex:1; display:flex; flex-direction:column; padding: 0; margin: 0">
+        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
+            <span>
+                <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
+                    <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
+                    @foreach (var device in OpenShockService.Data.Hubs.Value)
+                    {
+                        <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
+                    }
+                </MudSelect>
 
-    <span>
-    
-        <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
-            <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
-            @foreach (var device in OpenShockService.Data.Hubs.Value)
-            {
-                <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
-            }
-        </MudSelect>
-        
-    </span>
-    
-    <div>
-        <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
-        @FlowManager.DeviceConnectionState.Value
-    </div>
-    
+            </span>
+
+            <div>
+                <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+                @FlowManager.DeviceConnectionState.Value
+            </div>
+        </MudPaper>
+
 
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
             <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" Label="Channel A Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
             <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" Label="Channel B Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
         </MudPaper>
-        
-    <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">    
-        <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary">Find Coyote</MudButton>
-        <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
-        
-        @_bluetoothSearchOutput
-        <br>
-        <div>
-            <MudIcon Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
-            @FlowManager.CoyoteConnectionState.Value
-        </div>
-        
-        <MudSlider Step="1" Value="@_frequencySlider" Min="10" Max="240" Size="Size.Medium" ValueChanged="@(EventCallback.Factory.Create<int>(this, OnSettingsValueChangeInt))">Frequency</MudSlider>
+
+        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
+            <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary">Find Coyote</MudButton>
+            <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
+
+            @_bluetoothSearchOutput
+            <br>
+            <div>
+                <MudIcon Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+                @FlowManager.CoyoteConnectionState.Value
+            </div>
+
+            <MudSlider Step="1" Value="@_frequencySlider" Min="10" Max="1000" Size="Size.Medium" ValueChanged="@(EventCallback.Factory.Create<int>(this, OnSettingsValueChangeInt))">Frequency: @_frequencySlider</MudSlider>
+        </MudPaper>
+    </div>
+    <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex">
+        <MudProgressLinear Vertical="true" Style="padding:4px; align-items:center; justify-content:center;" Rounded="true" Size="Size.Medium" Value="50" Color="Color.Error"/>
     </MudPaper>
 </MudPaper>
 
@@ -67,16 +68,15 @@
     private string _bluetoothSearchOutput = "Click on Find Coyote to connect";
     private readonly CancellationTokenSource _token = new();
     
-    private Boolean _searching = false;
-    private Boolean _disableButton = false;
+    private bool _searching = false;
+    private bool _disableButton = false;
     
-    private IReadOnlyCollection<BluetoothDevice> _bluetoothDevices = new List<BluetoothDevice>();
     private IAsyncDisposable _flowUpdatedSubscriptionCoyote = null!;
     
     
     protected override async Task OnInitializedAsync()
     {
-        _frequencySlider = ModuleConfig.Config.BluetoothConnection.Frequency;
+        _frequencySlider = ModuleConfig.Config.BluetoothConnection.FrequencyMs;
         _selectedDevice = FlowManager.HubId;
         
         _disableButton = FlowManager.CoyoteConnectionState.Value is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
@@ -102,19 +102,25 @@
     {
         _bluetoothSearchOutput = "Searching...";
         _searching = true;
-        _bluetoothDevices = await BluetoothService.GetBluetoothDevices(_token.Token);
+        if (await BluetoothService.CheckDeviceAvailable(ModuleConfig.Config.BluetoothConnection.CoyoteAddress))
+        {
+            _searching = false;
+            await FlowManager.ConnectCoyote();
+        }
+        
+        var bluetoothDevices = await Bluetooth.ScanForDevicesAsync(cancellationToken:_token.Token);
         _searching = false;
         try
         {
             _bluetoothSearchOutput = "Found a Coyote V3";
-            var deviceId = _bluetoothDevices.First(device => device.Name == "47L121000").Id;
+            var deviceId = bluetoothDevices.First(device => device.Name == "47L121000").Id;
             ModuleConfig.Config.BluetoothConnection.CoyoteAddress = deviceId;
             ModuleConfig.SaveDeferred();
             await FlowManager.ConnectCoyote();
         }
         catch (InvalidOperationException)
         {
-            _bluetoothSearchOutput = "Couldnt find Coyote V3";
+            _bluetoothSearchOutput = "Couldn't find Coyote V3";
         }
     }
     
@@ -138,7 +144,7 @@
     private void OnSettingsValueChangeInt(int i)
     {
         _frequencySlider = i;
-        ModuleConfig.Config.BluetoothConnection.Frequency = (byte)i;
+        ModuleConfig.Config.BluetoothConnection.FrequencyMs = i;
         ModuleConfig.SaveDeferred();
     }
 }

@@ -28,14 +28,19 @@ public class CoyoteConnection
     private static readonly BluetoothUuid WaveformReadCharacteristicId = BluetoothUuid.FromShortId(0x150B);
     private static readonly BluetoothUuid WaveformWriteCharacteristicId = BluetoothUuid.FromShortId(0x150A);
 
-    public static readonly int TimeMsBetweenPackets = 100;
+    private static readonly BluetoothUuid BatteryLevelServiceId = BluetoothUuid.FromShortId(0x150A);
+    private static readonly BluetoothUuid BatteryLevelCharacteristicId = BluetoothUuid.FromShortId(0x1500);
+
+    private static readonly int TimeMsBetweenPackets = 100;
     private byte _number = 0;
     private byte _cStrengthA = 0;
     private byte _cStrengthB = 0;
     
+    
     private SemaphoreSlim _packetSemaphore = new SemaphoreSlim(0, 1);
     
     private GattCharacteristic? _waveformWriteCharacteristic;
+    private GattCharacteristic? _batteryCharacteristic;
     
     public IAsyncMinimalEventObservable OnClose => _onClose;
     private readonly AsyncMinimalEvent _onClose = new();
@@ -47,8 +52,10 @@ public class CoyoteConnection
     
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _state =
         new(WebsocketConnectionState.NotStarted);
-
     public IAsyncUpdatable<WebsocketConnectionState> State => _state;
+    
+    private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
+    public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
     
     public CoyoteConnection(
         ILogger<CoyoteConnection> logger,
@@ -66,65 +73,62 @@ public class CoyoteConnection
     {
         _state.Value = WebsocketConnectionState.Connecting;
         _logger.LogDebug($"Opening connection to coyote {_deviceId}");
-        _device = await BluetoothDevice.FromIdAsync(_deviceId);
+        try
+        {
+            _device = await BluetoothDevice.FromIdAsync(_deviceId);
 
-        if (_device == null)
+            if (_device == null)
+            {
+                _logger.LogError("Coyote device could not be found");
+                throw new NullReferenceException("Device not found");
+            }
+
+            if (_currentCts != null) await _currentCts.CancelAsync();
+            _linkedCts.Dispose();
+            _currentCts?.Dispose();
+
+            _currentCts = new CancellationTokenSource();
+            _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, _currentCts.Token);
+
+            _logger.LogInformation("Pairing with device: {DeviceName}", _device.Name);
+            await _device.Gatt.ConnectAsync();
+            _state.Value = WebsocketConnectionState.Connected;
+
+            _device.GattServerDisconnected += GattServerDisconnected;
+
+            var waveformService = await _device.Gatt.GetPrimaryServiceAsync(WaveformServiceId);
+            var batteryService = await _device.Gatt.GetPrimaryServiceAsync(BatteryLevelServiceId);
+
+            _batteryCharacteristic = await batteryService.GetCharacteristicAsync(BatteryLevelCharacteristicId);
+            _waveformWriteCharacteristic = await waveformService.GetCharacteristicAsync(WaveformWriteCharacteristicId);
+
+            _batteryCharacteristic.CharacteristicValueChanged += UpdateBattery;
+            _batteryLevel.Value = (await _batteryCharacteristic.ReadValueAsync())[0];
+
+            OsTask.Run(WriteLoop);
+        }
+        catch (NullReferenceException)
         {
             _logger.LogError("Coyote device could not be found");
-            throw new NullReferenceException("Device not found");
+            _state.Value = WebsocketConnectionState.Disconnected;
         }
-        
-        if (_currentCts != null) await _currentCts.CancelAsync();
-        _linkedCts.Dispose();
-        _currentCts?.Dispose();
-        
-        _currentCts = new CancellationTokenSource();
-        _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, _currentCts.Token);
-        
-        _logger.LogInformation("Pairing with device: {DeviceName}", _device.Name);
-        await _device.Gatt.ConnectAsync();
-        _state.Value = WebsocketConnectionState.Connected;
-        
-        _device.GattServerDisconnected += GattServerDisconnected;
-
-        var waveformService = await _device.Gatt.GetPrimaryServiceAsync(WaveformServiceId);
-        
-        _waveformWriteCharacteristic = await waveformService.GetCharacteristicAsync(WaveformWriteCharacteristicId);
-        var waveformReadCharacteristic = await waveformService.GetCharacteristicAsync(WaveformReadCharacteristicId);
-        
-        waveformReadCharacteristic.CharacteristicValueChanged += ReadBack;
-        await waveformReadCharacteristic.StartNotificationsAsync();
-        
-        OsTask.Run(WriteLoop);
     }
 
     private void GattServerDisconnected(object? sender, EventArgs e)
     {
+        _logger.LogError("Coyote disconnected");
         _state.Value = WebsocketConnectionState.Disconnected;
         _ = OpenAsync();
     }
 
-    private void ReadBack(object? sender, GattCharacteristicValueChangedEventArgs e)
+    private void UpdateBattery(object? sender, GattCharacteristicValueChangedEventArgs e)
     {
-        var receivedNumber = e.Value[1];
-        if (_number != receivedNumber)
-        {
-            if (e.Value.Length == 6)
-            {
-                _packetSemaphore.Release();
-            }
-        }
-        else
-        {
-            _packetSemaphore.Release();
-        }
+        if (e.Value != null) _batteryLevel.Value = e.Value[0];
     }
-
+    
     private async Task WriteLoop()
     {
         _incomingWaveformPackets.Clear();
-        DateTimeOffset time = DateTimeOffset.Now;
-        int countPerSecond = 0;
         try
         {
             while (await _timer.WaitForNextTickAsync())
@@ -135,7 +139,15 @@ public class CoyoteConnection
                 _waveformPacketQueue.RemoveAll(ps => ps.ChannelWaveforms.Count == 0);
                 var currentTickWaveforms = _waveformPacketQueue.Select(ps => ps.ChannelWaveforms.Dequeue());
                 
-                WaveformBuilder waveformBuilder = new(_cStrengthA, _cStrengthB, _config.Config.BluetoothConnection.Frequency);
+                byte frequencyHz = _config.Config.BluetoothConnection.FrequencyMs switch
+                {
+                    >= 10 and <= 100 => (byte)_config.Config.BluetoothConnection.FrequencyMs,
+                    >= 101 and <= 600 => (byte)((_config.Config.BluetoothConnection.FrequencyMs-100)/5 + 100),
+                    >= 601 and <= 1000 => (byte)((_config.Config.BluetoothConnection.FrequencyMs-600)/10 + 200),
+                    _ => 10
+                };
+                
+                WaveformBuilder waveformBuilder = new(_cStrengthA, _cStrengthB, frequencyHz);
                 foreach (var waveform in currentTickWaveforms)
                 {
                     waveformBuilder.AddChannelWaveform(waveform);
