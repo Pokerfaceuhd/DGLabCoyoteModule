@@ -50,8 +50,11 @@
         </MudPaper>
     </div>
     <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="flex-direction: column; align-content: center">
-        @_batteryLevel
-        <MudProgressLinear Vertical="true" Rounded="true" Size="Size.Large" Value="@_batteryLevel" Color="Color.Error"/>
+        <MudProgressLinear Vertical="true" Rounded="true" Size="Size.Large" Value="@_batteryLevel" Color="Color.Error">
+            <MudText Typo="Typo.subtitle1" Color="Color.Success">
+                <b>@_batteryLevel%</b>
+            </MudText>
+        </MudProgressLinear>
     </MudPaper>
 </MudPaper>
 

@@ -129,11 +129,12 @@ public class CoyoteConnection
                 _waveformPacketQueue.RemoveAll(ps => ps.ChannelWaveforms.Count == 0);
                 var currentTickWaveforms = _waveformPacketQueue.Select(ps => ps.ChannelWaveforms.Dequeue());
 
-                byte frequencyHz = _config.Config.BluetoothConnection.FrequencyMs switch
+                var frequencyMs = _config.Config.BluetoothConnection.FrequencyMs;
+                byte frequencyHz = frequencyMs switch
                 {
-                    >= 10 and <= 100 => (byte)_config.Config.BluetoothConnection.FrequencyMs,
-                    >= 101 and <= 600 => (byte)((_config.Config.BluetoothConnection.FrequencyMs - 100) / 5 + 100),
-                    >= 601 and <= 1000 => (byte)((_config.Config.BluetoothConnection.FrequencyMs - 600) / 10 + 200),
+                    >= 10 and <= 100 => (byte)frequencyMs,
+                    >= 101 and <= 600 => (byte)((frequencyMs - 100) / 5 + 100),
+                    >= 601 and <= 1000 => (byte)((frequencyMs - 600) / 10 + 200),
                     _ => 10
                 };
 
