@@ -1,4 +1,5 @@
-﻿using DGLabCoyote.Config;
+﻿using System.Windows;
+using DGLabCoyote.Config;
 using DGLabCoyote.Models.Coyote;
 using InTheHand.Bluetooth;
 using LucHeart.WebsocketLibrary;
@@ -152,6 +153,10 @@ public class FlowManager
     public async Task ConnectCoyote()
     {
         var coyoteAddress = _config.Config.BluetoothConnection.CoyoteAddress;
+        if (coyoteAddress == string.Empty)
+        {
+            return;
+        }
         if (CoyoteConnection != null)
         {
             await CoyoteConnection.DisposeAsync();

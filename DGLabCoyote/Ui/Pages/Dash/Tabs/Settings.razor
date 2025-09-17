@@ -36,7 +36,7 @@
         </MudPaper>
 
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
-            <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" Color="Color.Primary">Find Coyote</MudButton>
+            <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Bluetooth" Color="Color.Primary">Connect to Coyote</MudButton>
             <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
 
             @_bluetoothSearchOutput
@@ -111,14 +111,19 @@
     {
         _bluetoothSearchOutput = "Searching...";
         _searching = true;
-        if (await BluetoothService.CheckDeviceAvailable(ModuleConfig.Config.BluetoothConnection.CoyoteAddress))
+        await FlowManager.ConnectCoyote();
+        await Task.Delay(1000);
+        while (FlowManager.CoyoteConnectionState.Value == WebsocketConnectionState.Connecting)
+            await Task.Delay(100);
+
+        if (FlowManager.CoyoteConnectionState.Value == WebsocketConnectionState.Connected)
         {
+            _bluetoothSearchOutput = "Found a Coyote V3";
             _searching = false;
-            await FlowManager.ConnectCoyote();
+            return;
         }
-        
-        var bluetoothDevices = await Bluetooth.ScanForDevicesAsync(cancellationToken:_token.Token);
         _searching = false;
+        var bluetoothDevices = await Bluetooth.ScanForDevicesAsync(cancellationToken:_token.Token);
         try
         {
             _bluetoothSearchOutput = "Found a Coyote V3";
@@ -142,6 +147,7 @@
     {
         await _flowUpdatedSubscription.DisposeAsync();
         await _flowUpdatedSubscriptionCoyote.DisposeAsync();
+        await _flowUpdatedBatteryLevel.DisposeAsync();
         await _token.CancelAsync();
     }
     

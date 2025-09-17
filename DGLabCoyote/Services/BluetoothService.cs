@@ -15,11 +15,6 @@ public sealed class BluetoothService : IDisposable
         return await Bluetooth.ScanForDevicesAsync(cancellationToken:cancellationToken);
     }
     
-    public static async Task<bool> CheckDeviceAvailable(String id)
-    {
-        return await BluetoothDevice.FromIdAsync(id) != null;
-    }
-    
     public void Dispose()
     {
         
