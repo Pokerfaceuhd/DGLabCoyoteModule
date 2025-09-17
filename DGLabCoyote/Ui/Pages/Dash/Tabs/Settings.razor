@@ -9,7 +9,7 @@
 
 @page "/dash/hub"
 
-<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="display: flex; gap:16px;">
+<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px; flex-direction: row">
     <div style="flex:1; display:flex; flex-direction:column; padding: 0; margin: 0">
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
             <span>
@@ -49,8 +49,9 @@
             <MudSlider Step="1" Value="@_frequencySlider" Min="10" Max="1000" Size="Size.Medium" ValueChanged="@(EventCallback.Factory.Create<int>(this, OnSettingsValueChangeInt))">Frequency: @_frequencySlider</MudSlider>
         </MudPaper>
     </div>
-    <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex">
-        <MudProgressLinear Vertical="true" Style="padding:4px; align-items:center; justify-content:center;" Rounded="true" Size="Size.Medium" Value="50" Color="Color.Error"/>
+    <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="flex-direction: column; align-content: center">
+        @_batteryLevel
+        <MudProgressLinear Vertical="true" Rounded="true" Size="Size.Large" Value="@_batteryLevel" Color="Color.Error"/>
     </MudPaper>
 </MudPaper>
 
@@ -63,6 +64,8 @@
     
     private Guid _selectedDevice = Guid.Empty;
     private IAsyncDisposable _flowUpdatedSubscription = null!;
+    private IAsyncDisposable _flowUpdatedBatteryLevel = null!;
+    private IAsyncDisposable _flowUpdatedSubscriptionCoyote = null!;
     private int _frequencySlider;
     
     private string _bluetoothSearchOutput = "Click on Find Coyote to connect";
@@ -70,21 +73,27 @@
     
     private bool _searching = false;
     private bool _disableButton = false;
-    
-    private IAsyncDisposable _flowUpdatedSubscriptionCoyote = null!;
+    private byte _batteryLevel;
     
     
     protected override async Task OnInitializedAsync()
     {
         _frequencySlider = ModuleConfig.Config.BluetoothConnection.FrequencyMs;
         _selectedDevice = FlowManager.HubId;
-        
+
+
+        _batteryLevel = FlowManager.BatteryLevel.Value;
         _disableButton = FlowManager.CoyoteConnectionState.Value is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
         
         _flowUpdatedSubscription = await FlowManager.DeviceConnectionState.Updated.SubscribeAsync(state => InvokeAsync(StateHasChanged));
         _flowUpdatedSubscriptionCoyote = await FlowManager.CoyoteConnectionState.Updated.SubscribeAsync(state =>
         {
             _disableButton = state is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
+            return InvokeAsync(StateHasChanged);
+        });
+        _flowUpdatedBatteryLevel = await FlowManager.BatteryLevel.Updated.SubscribeAsync(state =>
+        {
+            _batteryLevel = state;
             return InvokeAsync(StateHasChanged);
         });
     }

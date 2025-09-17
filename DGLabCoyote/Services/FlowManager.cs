@@ -33,6 +33,9 @@ public class FlowManager
     
     public IAsyncUpdatable<WebsocketConnectionState> CoyoteConnectionState => _coyoteConnectionState;
     
+    private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
+    public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
+    
     public FlowManager(
         IModuleConfig<DgLabCoyoteConfig> config,
         ILogger<FlowManager> logger,
@@ -162,6 +165,11 @@ public class FlowManager
             _coyoteConnectionState.Value = state;
             return Task.CompletedTask;
         }).ConfigureAwait(false);
-        await CoyoteConnection.OpenAsync().ConfigureAwait(false);
+        await CoyoteConnection.BatteryLevel.Updated.SubscribeAsync(batteryLevel =>
+        {
+            _batteryLevel.Value = batteryLevel;
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        CoyoteConnection.OpenAsync().ConfigureAwait(false);
     }
 }
