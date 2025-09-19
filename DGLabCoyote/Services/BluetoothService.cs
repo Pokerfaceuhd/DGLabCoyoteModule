@@ -2,21 +2,10 @@
 
 namespace DGLabCoyote.Services;
 
-public sealed class BluetoothService : IDisposable
+public static class BluetoothService
 {
-
-    public BluetoothService()
-    {
-
-    }
-
-    public static async Task<IReadOnlyCollection<BluetoothDevice>> GetBluetoothDevices(CancellationToken cancellationToken)
+    public static async Task<IReadOnlyCollection<BluetoothDevice>> GetBluetoothDevices(CancellationToken cancellationToken = default)
     {
         return await Bluetooth.ScanForDevicesAsync(cancellationToken:cancellationToken);
-    }
-    
-    public void Dispose()
-    {
-        
     }
 }

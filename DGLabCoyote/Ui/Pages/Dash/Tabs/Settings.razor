@@ -50,8 +50,8 @@
         </MudPaper>
     </div>
     <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="flex-direction: column; align-content: center">
-        <MudProgressLinear Vertical="true" Rounded="true" Size="Size.Large" Value="@_batteryLevel" Color="Color.Error">
-            <MudText Typo="Typo.subtitle1" Color="Color.Success">
+        <MudProgressLinear Vertical="true" Rounded="true" Size="Size.Large" Value="@_batteryLevel" Color="GetBatteryPercentageColor(_batteryLevel)">
+            <MudText Typo="Typo.subtitle1">
                 <b>@_batteryLevel%</b>
             </MudText>
         </MudProgressLinear>
@@ -62,7 +62,6 @@
 
     [ModuleInject] private IOpenShockService OpenShockService { get; set; } = null!;
     [ModuleInject] private FlowManager FlowManager { get; set; } = null!;
-    [ModuleInject] private BluetoothService BluetoothService { get; set; } = null!;
     [ModuleInject] private IModuleConfig<DgLabCoyoteConfig> ModuleConfig { get; set; } = null!;
     
     private Guid _selectedDevice = Guid.Empty;
@@ -100,6 +99,16 @@
             return InvokeAsync(StateHasChanged);
         });
     }
+
+    private static Color GetBatteryPercentageColor(byte percentage) =>
+        percentage switch
+        {
+            <= 20 => Color.Tertiary,
+            <= 40 => Color.Warning,
+            <= 100 => Color.Success,
+            _ => Color.Tertiary
+        };
+    
     
     private static Color GetConnectionStateColor(WebsocketConnectionState state) =>
         state switch
@@ -126,7 +135,7 @@
             return;
         }
         _searching = false;
-        var bluetoothDevices = await Bluetooth.ScanForDevicesAsync(cancellationToken:_token.Token);
+        var bluetoothDevices = await BluetoothService.GetBluetoothDevices(cancellationToken:_token.Token);
         try
         {
             _bluetoothSearchOutput = "Found a Coyote V3";

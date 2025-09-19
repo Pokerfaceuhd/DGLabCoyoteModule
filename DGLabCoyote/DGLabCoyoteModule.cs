@@ -47,7 +47,6 @@ public class DGLabCoyoteModule : DesktopModuleBase
         services.AddSingleton(ModuleInstanceManager.OpenShock);
         
         services.AddSingleton<FlowManager>();
-        services.AddSingleton<BluetoothService>();
         
         return services.BuildServiceProvider();
     }   
