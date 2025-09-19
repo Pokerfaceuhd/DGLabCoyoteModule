@@ -59,6 +59,6 @@
         <ItemGroup>
             <OwnDll Include="$(TargetPath)" />
         </ItemGroup>
-        <Copy SourceFiles="@(OwnDll)" DestinationFolder="C:\Users\Luna\AppData\Roaming\OpenShock\Desktop\modules\openshock2coyote" />
+        <Copy SourceFiles="@(OwnDll)" DestinationFolder="$(AppData)\OpenShock\Desktop\modules\openshock2coyote" />
     </Target>
 </Project>
