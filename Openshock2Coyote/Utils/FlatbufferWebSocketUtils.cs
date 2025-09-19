@@ -4,7 +4,7 @@ using FlatSharp;
 using Microsoft.IO;
 using OneOf;
 
-namespace DGLabCoyote.Utils;
+namespace openshock2coyote.Utils;
 
 /// <summary>
 /// Flatbuffers websocket utilities

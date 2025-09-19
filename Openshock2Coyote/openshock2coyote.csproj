@@ -5,14 +5,15 @@
         <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <RootNamespace>DGLabCoyote</RootNamespace>
+        <RootNamespace>openshock2coyote</RootNamespace>
         <Version>0.1.0</Version>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <AssemblyName>DGLabCoyote</AssemblyName>
 
         <Configurations>Release;Debug</Configurations>
 
         <Platforms>AnyCPU</Platforms>
+
+        <PackageId>openshock2coyote</PackageId>
     </PropertyGroup>
 
     <ItemGroup>
@@ -48,7 +49,6 @@
     
     <ItemGroup>
         <None Remove="Resources\DgLabModule-Icon.png" />
-        <EmbeddedResource Include="Resources\DgLabModule-Icon.png" />
     </ItemGroup>
 
     <PropertyGroup>
@@ -59,6 +59,6 @@
         <ItemGroup>
             <OwnDll Include="$(TargetPath)" />
         </ItemGroup>
-        <Copy SourceFiles="@(OwnDll)" DestinationFolder="C:\Users\Luna\AppData\Roaming\OpenShock\Desktop\modules\DGLabCoyote" />
+        <Copy SourceFiles="@(OwnDll)" DestinationFolder="C:\Users\Luna\AppData\Roaming\OpenShock\Desktop\modules\openshock2coyote" />
     </Target>
 </Project>

@@ -1,4 +1,4 @@
-﻿namespace DGLabCoyote.Models.Coyote;
+﻿namespace openshock2coyote.Models.Coyote;
 
 public struct SingleChannelWaveform
 {

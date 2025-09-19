@@ -1,6 +1,6 @@
-﻿using DGLabCoyote.Models.Coyote;
+﻿using openshock2coyote.Models.Coyote;
 
-namespace DGLabCoyote.Utils;
+namespace openshock2coyote.Utils;
 
 public class WaveformBuilder
 {

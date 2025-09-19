@@ -1,4 +1,4 @@
-﻿namespace DGLabCoyote.Models.Backend;
+﻿namespace openshock2coyote.Models.Backend;
 
 public sealed class LcgNodeResponse
 {

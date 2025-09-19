@@ -1,8 +1,8 @@
-@using DGLabCoyote.Config
+@using openshock2coyote.Config
 @using LucHeart.WebsocketLibrary
 @using OpenShock.Desktop.ModuleBase
 @using OpenShock.Desktop.ModuleBase.Api
-@using DGLabCoyote.Services
+@using openshock2coyote.Services
 @using InTheHand.Bluetooth
 @using OpenShock.Desktop.ModuleBase.Config
 @implements IAsyncDisposable
@@ -20,9 +20,7 @@
                         <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
                     }
                 </MudSelect>
-
             </span>
-
             <div>
                 <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
                 @FlowManager.DeviceConnectionState.Value
@@ -36,16 +34,17 @@
         </MudPaper>
 
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
-            <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Bluetooth" Color="Color.Primary">Connect to Coyote</MudButton>
+            <div class="d-flex align-items-center gap-2">
+                <MudButton OnClick="StopCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Cancel" Color="Color.Primary">Stop</MudButton>
+                <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Bluetooth" Color="Color.Primary" Class="flex-grow-1">Connect to Coyote</MudButton>
+            </div>
             <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
-
             @_bluetoothSearchOutput
-            <br>
             <div>
                 <MudIcon Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
                 @FlowManager.CoyoteConnectionState.Value
             </div>
-
+            
             <MudSlider Step="1" Value="@_frequencySlider" Min="10" Max="1000" Size="Size.Medium" ValueChanged="@(EventCallback.Factory.Create<int>(this, OnSettingsValueChangeInt))">Frequency: @_frequencySlider</MudSlider>
         </MudPaper>
     </div>
@@ -62,7 +61,7 @@
 
     [ModuleInject] private IOpenShockService OpenShockService { get; set; } = null!;
     [ModuleInject] private FlowManager FlowManager { get; set; } = null!;
-    [ModuleInject] private IModuleConfig<DgLabCoyoteConfig> ModuleConfig { get; set; } = null!;
+    [ModuleInject] private IModuleConfig<Openshock2CoyoteConfig> ModuleConfig { get; set; } = null!;
     
     private Guid _selectedDevice = Guid.Empty;
     private IAsyncDisposable _flowUpdatedSubscription = null!;
@@ -70,19 +69,25 @@
     private IAsyncDisposable _flowUpdatedSubscriptionCoyote = null!;
     private int _frequencySlider;
     
-    private string _bluetoothSearchOutput = "Click on Find Coyote to connect";
-    private readonly CancellationTokenSource _token = new();
+    private string _bluetoothSearchOutput = "";
+    private readonly CancellationTokenSource _everythingToken = new();
+    private CancellationTokenSource _searchTokenSource = new();
     
-    private bool _searching = false;
-    private bool _disableButton = false;
+    private bool _searching;
+    private bool _disableButton;
     private byte _batteryLevel;
     
     
     protected override async Task OnInitializedAsync()
     {
+        _bluetoothSearchOutput = FlowManager.CoyoteConnectionState.Value switch
+        {
+            WebsocketConnectionState.Connected => "Connected",
+            WebsocketConnectionState.Connecting => "Connecting...",
+            _ => "Click on Find Coyote to connect"
+        };
         _frequencySlider = ModuleConfig.Config.BluetoothConnection.FrequencyMs;
         _selectedDevice = FlowManager.HubId;
-
 
         _batteryLevel = FlowManager.BatteryLevel.Value;
         _disableButton = FlowManager.CoyoteConnectionState.Value is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
@@ -91,6 +96,12 @@
         _flowUpdatedSubscriptionCoyote = await FlowManager.CoyoteConnectionState.Updated.SubscribeAsync(state =>
         {
             _disableButton = state is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
+            _bluetoothSearchOutput = FlowManager.CoyoteConnectionState.Value switch
+            {
+                WebsocketConnectionState.Connected => "Connected",
+                WebsocketConnectionState.Connecting => "Connecting...",
+                _ => "Click on Find Coyote to connect"
+            };
             return InvokeAsync(StateHasChanged);
         });
         _flowUpdatedBatteryLevel = await FlowManager.BatteryLevel.Updated.SubscribeAsync(state =>
@@ -103,10 +114,9 @@
     private static Color GetBatteryPercentageColor(byte percentage) =>
         percentage switch
         {
-            <= 20 => Color.Tertiary,
-            <= 40 => Color.Warning,
-            <= 100 => Color.Success,
-            _ => Color.Tertiary
+            > 40 => Color.Success,
+            > 20 => Color.Warning,
+            _ => Color.Error
         };
     
     
@@ -118,24 +128,37 @@
             WebsocketConnectionState.WaitingForReconnect => Color.Tertiary,
             _ => Color.Error
         };
-    
+
+    private async Task StopCoyote()
+    {
+        await _searchTokenSource.CancelAsync();
+        await FlowManager.DisconnectCoyote();
+        _searchTokenSource = new CancellationTokenSource();
+        _searching = false;
+    }
+
     private async Task FindCoyote()
     {
+        var searchToken = _searchTokenSource.Token;
         _bluetoothSearchOutput = "Searching...";
         _searching = true;
         await FlowManager.ConnectCoyote();
-        await Task.Delay(1000);
+        await Task.Delay(1000, searchToken);
         while (FlowManager.CoyoteConnectionState.Value == WebsocketConnectionState.Connecting)
-            await Task.Delay(100);
+        {
+            searchToken.ThrowIfCancellationRequested();
+            await Task.Delay(100, searchToken); 
+        }
+        searchToken.ThrowIfCancellationRequested();
 
         if (FlowManager.CoyoteConnectionState.Value == WebsocketConnectionState.Connected)
         {
-            _bluetoothSearchOutput = "Found a Coyote V3";
             _searching = false;
             return;
         }
         _searching = false;
-        var bluetoothDevices = await BluetoothService.GetBluetoothDevices(cancellationToken:_token.Token);
+        var bluetoothDevices = await BluetoothService.GetBluetoothDevices(cancellationToken:searchToken);
+        searchToken.ThrowIfCancellationRequested();
         try
         {
             _bluetoothSearchOutput = "Found a Coyote V3";
@@ -157,10 +180,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        await _searchTokenSource.CancelAsync();
+        _searchTokenSource.Dispose();
         await _flowUpdatedSubscription.DisposeAsync();
         await _flowUpdatedSubscriptionCoyote.DisposeAsync();
         await _flowUpdatedBatteryLevel.DisposeAsync();
-        await _token.CancelAsync();
     }
     
     private void OnSettingsValueChange()

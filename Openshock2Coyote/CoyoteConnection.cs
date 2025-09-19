@@ -1,9 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Threading.Channels;
-using DGLabCoyote.Config;
-using DGLabCoyote.Models.Coyote;
-using DGLabCoyote.Services;
-using DGLabCoyote.Utils;
+using openshock2coyote.Services;
 using InTheHand.Bluetooth;
 using LucHeart.WebsocketLibrary;
 using LucHeart.WebsocketLibrary.Updatables;
@@ -11,13 +8,16 @@ using Microsoft.Extensions.Logging;
 using OpenShock.Desktop.ModuleBase.Api;
 using OpenShock.Desktop.ModuleBase.Config;
 using OpenShock.MinimalEvents;
+using openshock2coyote.Config;
+using openshock2coyote.Models.Coyote;
+using openshock2coyote.Utils;
 
-namespace DGLabCoyote;
+namespace openshock2coyote;
 
 public class CoyoteConnection
 {
     private readonly ILogger<CoyoteConnection> _logger;
-    private IModuleConfig<DgLabCoyoteConfig> _config;
+    private IModuleConfig<Openshock2CoyoteConfig> _config;
     private BluetoothDevice? _device;
     private readonly String _deviceId;
     private readonly CancellationTokenSource _disposeCts = new();
@@ -56,7 +56,7 @@ public class CoyoteConnection
     
     public CoyoteConnection(
         ILogger<CoyoteConnection> logger,
-        IModuleConfig<DgLabCoyoteConfig> config,
+        IModuleConfig<Openshock2CoyoteConfig> config,
         String deviceId)
     {
         _logger = logger;
@@ -188,7 +188,6 @@ public class CoyoteConnection
 
     public async ValueTask DisposeAsync()
     {
-        _batteryLevel.Value = 0;
         if (_disposed) return;
         _disposed = true;
 
@@ -199,7 +198,6 @@ public class CoyoteConnection
         {
             _logger.LogError(e, "Error during DisposeAsync, Calling Close failed");
         }
-
         _device?.Gatt.Disconnect();
         
         if (_currentCts != null) await _currentCts.CancelAsync();

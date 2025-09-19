@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DGLabCoyote", "DGLabCoyote\DGLabCoyote.csproj", "{93FD0871-A24C-464D-BF1A-3C25E00AE50C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "openshock2coyote", "openshock2coyote\openshock2coyote.csproj", "{93FD0871-A24C-464D-BF1A-3C25E00AE50C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -1,6 +1,4 @@
 ﻿using System.Windows;
-using DGLabCoyote.Config;
-using DGLabCoyote.Models.Coyote;
 using InTheHand.Bluetooth;
 using LucHeart.WebsocketLibrary;
 using Microsoft.Extensions.Logging;
@@ -9,8 +7,10 @@ using OpenShock.Desktop.ModuleBase.Config;
 using OpenShock.SDK.CSharp.Updatables;
 using OpenShock.Serialization.Gateway;
 using OpenShock.Serialization.Types;
+using openshock2coyote.Config;
+using openshock2coyote.Models.Coyote;
 
-namespace DGLabCoyote.Services;
+namespace openshock2coyote.Services;
 
 public class FlowManager
 {
@@ -19,7 +19,7 @@ public class FlowManager
     public DeviceConnection? DeviceConnection { get; private set; } = null;
     public CoyoteConnection? CoyoteConnection { get; private set; } = null;
     
-    private readonly IModuleConfig<DgLabCoyoteConfig> _config;
+    private readonly IModuleConfig<Openshock2CoyoteConfig> _config;
     private readonly ILogger<FlowManager> _logger;
     private readonly ILogger<DeviceConnection> _deviceConnectionLogger;
     private readonly ILogger<CoyoteConnection> _coyoteConnectionLogger;
@@ -38,7 +38,7 @@ public class FlowManager
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
     
     public FlowManager(
-        IModuleConfig<DgLabCoyoteConfig> config,
+        IModuleConfig<Openshock2CoyoteConfig> config,
         ILogger<FlowManager> logger,
         ILogger<DeviceConnection> deviceConnectionLogger,
         ILogger<CoyoteConnection> coyoteConnectionLogger,
@@ -56,8 +56,8 @@ public class FlowManager
         if (_config.Config.BluetoothConnection.CoyoteAddress != string.Empty)
             await ConnectCoyote();
         
-        if (_config.Config.Hub.Hub != null)
-            await SelectedDeviceChanged(_config.Config.Hub.Hub.Value);
+        if (_config.Config.Hub.Hub != Guid.Empty)
+            await SelectedDeviceChanged(_config.Config.Hub.Hub);
     }
     
     public async Task SelectedDeviceChanged(Guid id)
@@ -150,6 +150,14 @@ public class FlowManager
         await Task.WhenAll(packetTasks);
     }
 
+    public async Task DisconnectCoyote()
+    {
+        if (CoyoteConnection != null) await CoyoteConnection.DisposeAsync();
+        CoyoteConnection = null;
+        _coyoteConnectionState.Value = WebsocketConnectionState.Disconnected;
+        _batteryLevel.Value = 0;
+    }
+    
     public async Task ConnectCoyote()
     {
         var coyoteAddress = _config.Config.BluetoothConnection.CoyoteAddress;

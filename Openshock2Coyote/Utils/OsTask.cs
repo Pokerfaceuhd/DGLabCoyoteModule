@@ -2,7 +2,7 @@
 using Serilog;
 using ILogger = Serilog.ILogger;
 
-namespace DGLabCoyote.Utils;
+namespace openshock2coyote.Utils;
 
 public static class OsTask
 {

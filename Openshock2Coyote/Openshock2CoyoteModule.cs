@@ -1,21 +1,21 @@
 ﻿using OpenShock.Desktop.ModuleBase;
-using DGLabCoyote;
-using DGLabCoyote.Config;
-using DGLabCoyote.Services;
+using openshock2coyote;
 using OpenShock.Desktop.ModuleBase.Navigation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MudBlazor;
 using OpenShock.Desktop.ModuleBase.Config;
-using DGLabCoyote.Ui.Pages.Dash.Tabs;
+using openshock2coyote.Ui.Pages.Dash.Tabs;
+using openshock2coyote.Config;
+using openshock2coyote.Services;
 
-[assembly:DesktopModule(typeof(DGLabCoyoteModule), "DGLabCoyote", "DGLabCoyote")]
+[assembly:DesktopModule(typeof(Openshock2CoyoteModule), "openshock2coyote", "openshock2coyote")]
 
-namespace DGLabCoyote;
+namespace openshock2coyote;
 
-public class DGLabCoyoteModule : DesktopModuleBase
+public class Openshock2CoyoteModule : DesktopModuleBase
 {
-    public override string IconPath => "DGLabCoyote/Resources/DgLabModule-Icon.png";
+    public override string IconPath => "openshock2coyote/Resources/openshock2coyote-Icon.png";
     
     public override IReadOnlyCollection<NavigationItem> NavigationComponents { get; } =
     [
@@ -29,12 +29,12 @@ public class DGLabCoyoteModule : DesktopModuleBase
     
     public override async Task Setup()
     {
-        var config = await ModuleInstanceManager.GetModuleConfig<DgLabCoyoteConfig>();
+        var config = await ModuleInstanceManager.GetModuleConfig<Openshock2CoyoteConfig>();
         ModuleServiceProvider = BuildServices(config);
         
     }
     
-    private ServiceProvider BuildServices(IModuleConfig<DgLabCoyoteConfig> config)
+    private ServiceProvider BuildServices(IModuleConfig<Openshock2CoyoteConfig> config)
     {
         var loggerFactory = ModuleInstanceManager.AppServiceProvider.GetRequiredService<ILoggerFactory>();
         

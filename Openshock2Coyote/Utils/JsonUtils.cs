@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 
-namespace DGLabCoyote.Utils;
+namespace openshock2coyote.Utils;
 
 public static class JsonUtils
 {

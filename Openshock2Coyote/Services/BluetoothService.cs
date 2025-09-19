@@ -1,6 +1,6 @@
 ﻿using InTheHand.Bluetooth;
 
-namespace DGLabCoyote.Services;
+namespace openshock2coyote.Services;
 
 public static class BluetoothService
 {
