@@ -183,6 +183,6 @@ public class FlowManager
             _batteryLevel.Value = batteryLevel;
             return Task.CompletedTask;
         }).ConfigureAwait(false);
-        CoyoteConnection.OpenAsync().ConfigureAwait(false);
+        _ = CoyoteConnection.OpenAsync().ConfigureAwait(false);
     }
 }

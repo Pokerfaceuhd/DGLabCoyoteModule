@@ -5,6 +5,7 @@
 @using openshock2coyote.Services
 @using InTheHand.Bluetooth
 @using OpenShock.Desktop.ModuleBase.Config
+@using OpenShock.Serialization.Gateway
 @implements IAsyncDisposable
 
 @page "/dash/hub"
@@ -29,8 +30,37 @@
 
 
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
-            <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" Label="Channel A Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
-            <MudTextField Class="option-width" Variant="Variant.Filled" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" Label="Channel B Shocker Id" @bind-Value:after="OnSettingsValueChange"/>
+            <div class="d-flex align-items-center gap-2">
+                @if (_selectedDevice != Guid.Empty)
+                {
+                    <MudSelect T="ushort" Variant="Variant.Outlined" Label="Channel A Shocker" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" @bind-Value:after="OnSettingsValueChange">
+                        @foreach (var shocker in OpenShockService.Data.Hubs.Value.First(hub => hub.Id == _selectedDevice).Shockers)
+                        {
+                            <MudSelectItem Value="@shocker.RfId">@shocker.Name</MudSelectItem>
+                        }
+                        @if (!OpenShockService.Data.Hubs.Value
+                                 .First(hub => hub.Id == _selectedDevice)
+                                 .Shockers.Select(shocker => shocker.RfId)
+                                 .Contains(ModuleConfig.Config.Hub.ChannelAId))
+                        {
+                            <MudSelectItem Value="ModuleConfig.Config.Hub.ChannelAId">Select Shocker</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="ushort" Variant="Variant.Outlined" Label="Channel B Shocker" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" @bind-Value:after="OnSettingsValueChange">
+                        @foreach (var shocker in OpenShockService.Data.Hubs.Value.First(hub => hub.Id == _selectedDevice).Shockers)
+                        {
+                            <MudSelectItem Value="@shocker.RfId">@shocker.Name</MudSelectItem>
+                        }
+                        @if (!OpenShockService.Data.Hubs.Value
+                                 .First(hub => hub.Id == _selectedDevice)
+                                 .Shockers.Select(shocker => shocker.RfId)
+                                 .Contains(ModuleConfig.Config.Hub.ChannelBId))
+                        {
+                            <MudSelectItem Value="ModuleConfig.Config.Hub.ChannelBId">Select Shocker</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+            </div>
         </MudPaper>
 
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
@@ -104,11 +134,14 @@
             };
             return InvokeAsync(StateHasChanged);
         });
+        
         _flowUpdatedBatteryLevel = await FlowManager.BatteryLevel.Updated.SubscribeAsync(state =>
         {
             _batteryLevel = state;
             return InvokeAsync(StateHasChanged);
         });
+        
+        
     }
 
     private static Color GetBatteryPercentageColor(byte percentage) =>

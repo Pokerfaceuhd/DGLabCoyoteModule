@@ -3,6 +3,5 @@
 public sealed class BluetoothConnectionConfig
 {
     public string CoyoteAddress { get; set; } = String.Empty;
-    public int FrequencyMs { get; set; } = 1;
-    public bool AutoConnect { get; set; } = true;
+    public int FrequencyMs { get; set; } = 50;
 }

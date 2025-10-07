@@ -48,7 +48,8 @@
     </ItemGroup>
     
     <ItemGroup>
-        <None Remove="Resources\DgLabModule-Icon.png" />
+        <None Remove="Resources\openshock2coyote-Icon.png" />
+        <EmbeddedResource Include="Resources\openshock2coyote-Icon.png" />
     </ItemGroup>
 
     <PropertyGroup>

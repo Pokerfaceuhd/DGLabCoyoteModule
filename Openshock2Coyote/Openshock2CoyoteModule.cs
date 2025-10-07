@@ -5,10 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MudBlazor;
 using OpenShock.Desktop.ModuleBase.Config;
+using OpenShock.Desktop.ModuleBase.Models;
 using openshock2coyote.Ui.Pages.Dash.Tabs;
 using openshock2coyote.Config;
 using openshock2coyote.Services;
 
+[assembly:RequiredPermission(TokenPermissions.Devices_Auth)]
+[assembly:RequiredPermission(TokenPermissions.Devices_Edit)]
 [assembly:DesktopModule(typeof(Openshock2CoyoteModule), "openshock2coyote", "openshock2coyote")]
 
 namespace openshock2coyote;

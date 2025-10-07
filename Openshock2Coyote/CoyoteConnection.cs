@@ -108,7 +108,7 @@ public class CoyoteConnection
         _batteryCharacteristic.CharacteristicValueChanged += UpdateBattery;
         _batteryLevel.Value = (await _batteryCharacteristic.ReadValueAsync())[0];
 
-        OsTask.Run(WriteLoop);
+        _ = OsTask.Run(WriteLoop);
     }
 
     private void UpdateBattery(object? sender, GattCharacteristicValueChangedEventArgs e)
@@ -172,9 +172,10 @@ public class CoyoteConnection
         _logger.LogDebug("WriteLoop cancelled");
     }
 
-    public async Task Control(SingleChannelWaveformSeries waveformPacket)
+    public Task Control(SingleChannelWaveformSeries waveformPacket)
     {
         _incomingWaveformPackets.Enqueue(waveformPacket);
+        return Task.CompletedTask;
     }
     
     public async Task Close()
