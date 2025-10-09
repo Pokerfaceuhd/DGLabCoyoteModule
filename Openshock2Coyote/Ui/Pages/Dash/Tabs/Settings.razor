@@ -12,71 +12,105 @@
 
 <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px; flex-direction: row">
     <div style="flex:1; display:flex; flex-direction:column; padding: 0; margin: 0">
-        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
-            <span>
-                <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
-                    <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
-                    @foreach (var device in OpenShockService.Data.Hubs.Value)
+        <MudExpansionPanels>
+            <MudExpansionPanel Icon="@Icons.Material.Filled.Bluetooth" Expanded="true" Text="Coyote Connection">
+                <div class="d-flex align-items-center gap-2">
+                    <MudButton OnClick="StopCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Cancel" Color="Color.Primary">Stop</MudButton>
+                    <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Bluetooth" Color="Color.Primary" Class="flex-grow-1">Connect to Coyote</MudButton>
+                </div>
+                <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
+                <MudIcon Style="justify-content: center" Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+                @_bluetoothSearchOutput
+            </MudExpansionPanel>
+            <MudExpansionPanel Icon="@Icons.Material.Filled.Hub" Text="Hub Settings (Needs configuration before use)">
+                <MudDivider/>
+                <br/>
+                <MudText Color="Color.Error">It is recommended to create a new hub with 2 shockers on openshock.app</MudText>
+                <span> 
+                    <MudSelect T="Guid" Variant="Variant.Outlined" Label="Hub" @bind-Value="_selectedDevice" @bind-Value:after="SelectedDeviceChanged">
+                        <MudSelectItem Value="Guid.Empty">None (Disable)</MudSelectItem>
+                        @foreach (var device in OpenShockService.Data.Hubs.Value)
+                        {
+                            <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </span>
+                <div>
+                    <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+                    @FlowManager.DeviceConnectionState.Value
+                </div>
+
+                <MudGrid Spacing="2">
+                    @if (_selectedDevice != Guid.Empty)
                     {
-                        <MudSelectItem Value="@device.Id">@device.Name</MudSelectItem>
+                        <MudItem xs="6">
+                            <MudSelect T="ushort" Variant="Variant.Outlined" Label="Channel A Shocker" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" @bind-Value:after="OnSettingsValueChange">
+                                @foreach (var shocker in OpenShockService.Data.Hubs.Value.First(hub => hub.Id == _selectedDevice).Shockers)
+                                {
+                                    <MudSelectItem Value="@shocker.RfId">@shocker.Name</MudSelectItem>
+                                }
+                                @if (!OpenShockService.Data.Hubs.Value
+                                         .First(hub => hub.Id == _selectedDevice)
+                                         .Shockers.Select(shocker => shocker.RfId)
+                                         .Contains(ModuleConfig.Config.Hub.ChannelAId))
+                                {
+                                    <MudSelectItem Value="ModuleConfig.Config.Hub.ChannelAId">Select Shocker</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="ushort" Variant="Variant.Outlined" Label="Channel B Shocker" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" @bind-Value:after="OnSettingsValueChange">
+                                @foreach (var shocker in OpenShockService.Data.Hubs.Value.First(hub => hub.Id == _selectedDevice).Shockers)
+                                {
+                                    <MudSelectItem Value="@shocker.RfId">@shocker.Name</MudSelectItem>
+                                }
+                                @if (!OpenShockService.Data.Hubs.Value
+                                         .First(hub => hub.Id == _selectedDevice)
+                                         .Shockers.Select(shocker => shocker.RfId)
+                                         .Contains(ModuleConfig.Config.Hub.ChannelBId))
+                                {
+                                    <MudSelectItem Value="ModuleConfig.Config.Hub.ChannelBId">Select Shocker</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
                     }
-                </MudSelect>
-            </span>
-            <div>
-                <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
-                @FlowManager.DeviceConnectionState.Value
-            </div>
-        </MudPaper>
+                </MudGrid>
+            </MudExpansionPanel>
+            <MudExpansionPanel Icon="@Icons.Material.Filled.Bolt" Text="Shock Settings">
+                <MudDivider/>
+                <MudGrid Spacing="2">
+                    <MudItem xs="12">
+                        <MudSlider T="int" Step="1" Value="@ModuleConfig.Config.CoyoteConfig.DutyCycle" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.DutyCycle = value; ModuleConfig.SaveDeferred(); }"
+                                   Min="10" Max="1000" Size="Size.Medium">Cycle time: @(ModuleConfig.Config.CoyoteConfig.DutyCycle)ms</MudSlider>
+                    </MudItem>
+                    <MudDivider/>
+                    <MudItem xs="12">
+                        <MudText>Increase to get the theoretical maximum of 200 Intensity (I hope, you know what you're doing)</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.ShockMultiplier" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.ShockMultiplier = value; ModuleConfig.SaveDeferred(); }"  
+                                   Min="0" Max="2" Step="0.01f">Shock Multiplier: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplier * 100))%</MudSlider>
+                    </MudItem>
+                    
+                    <MudDivider/>
+                    <MudItem xs="12">
+                        <MudText>This simulates vibration by just giving you a lower intensity shock</MudText>
+                    </MudItem>
+                    <MudItem Style="align-content: center" xs="2">
+                        <MudCheckBox @bind-Value="@ModuleConfig.Config.CoyoteConfig.Vibrate">Vibration</MudCheckBox>
+                    </MudItem>
+                    <MudItem xs="10">
+                        <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.VibrateMultiplier" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.VibrateMultiplier = value; ModuleConfig.SaveDeferred(); }" 
+                                   Min="0" Max="2" Step="0.01f">Vibration Multiplier: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplier * 100))%</MudSlider>
+                    </MudItem>
 
 
-        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding-margin">
-            <div class="d-flex align-items-center gap-2">
-                @if (_selectedDevice != Guid.Empty)
-                {
-                    <MudSelect T="ushort" Variant="Variant.Outlined" Label="Channel A Shocker" @bind-Value="ModuleConfig.Config.Hub.ChannelAId" @bind-Value:after="OnSettingsValueChange">
-                        @foreach (var shocker in OpenShockService.Data.Hubs.Value.First(hub => hub.Id == _selectedDevice).Shockers)
-                        {
-                            <MudSelectItem Value="@shocker.RfId">@shocker.Name</MudSelectItem>
-                        }
-                        @if (!OpenShockService.Data.Hubs.Value
-                                 .First(hub => hub.Id == _selectedDevice)
-                                 .Shockers.Select(shocker => shocker.RfId)
-                                 .Contains(ModuleConfig.Config.Hub.ChannelAId))
-                        {
-                            <MudSelectItem Value="ModuleConfig.Config.Hub.ChannelAId">Select Shocker</MudSelectItem>
-                        }
-                    </MudSelect>
-                    <MudSelect T="ushort" Variant="Variant.Outlined" Label="Channel B Shocker" @bind-Value="ModuleConfig.Config.Hub.ChannelBId" @bind-Value:after="OnSettingsValueChange">
-                        @foreach (var shocker in OpenShockService.Data.Hubs.Value.First(hub => hub.Id == _selectedDevice).Shockers)
-                        {
-                            <MudSelectItem Value="@shocker.RfId">@shocker.Name</MudSelectItem>
-                        }
-                        @if (!OpenShockService.Data.Hubs.Value
-                                 .First(hub => hub.Id == _selectedDevice)
-                                 .Shockers.Select(shocker => shocker.RfId)
-                                 .Contains(ModuleConfig.Config.Hub.ChannelBId))
-                        {
-                            <MudSelectItem Value="ModuleConfig.Config.Hub.ChannelBId">Select Shocker</MudSelectItem>
-                        }
-                    </MudSelect>
-                }
-            </div>
-        </MudPaper>
-
-        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="position: relative; flex-direction: column">
-            <div class="d-flex align-items-center gap-2">
-                <MudButton OnClick="StopCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Cancel" Color="Color.Primary">Stop</MudButton>
-                <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Bluetooth" Color="Color.Primary" Class="flex-grow-1">Connect to Coyote</MudButton>
-            </div>
-            <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
-            @_bluetoothSearchOutput
-            <div>
-                <MudIcon Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
-                @FlowManager.CoyoteConnectionState.Value
-            </div>
-            
-            <MudSlider Step="1" Value="@_frequencySlider" Min="10" Max="1000" Size="Size.Medium" ValueChanged="@(EventCallback.Factory.Create<int>(this, OnSettingsValueChangeInt))">Frequency: @_frequencySlider</MudSlider>
-        </MudPaper>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
     </div>
     <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="flex-direction: column; align-content: center">
         <MudProgressLinear Vertical="true" Rounded="true" Size="Size.Large" Value="@_batteryLevel" Color="GetBatteryPercentageColor(_batteryLevel)">
@@ -85,6 +119,8 @@
             </MudText>
         </MudProgressLinear>
     </MudPaper>
+    
+    
 </MudPaper>
 
 @code {
@@ -97,10 +133,8 @@
     private IAsyncDisposable _flowUpdatedSubscription = null!;
     private IAsyncDisposable _flowUpdatedBatteryLevel = null!;
     private IAsyncDisposable _flowUpdatedSubscriptionCoyote = null!;
-    private int _frequencySlider;
     
     private string _bluetoothSearchOutput = "";
-    private readonly CancellationTokenSource _everythingToken = new();
     private CancellationTokenSource _searchTokenSource = new();
     
     private bool _searching;
@@ -116,7 +150,6 @@
             WebsocketConnectionState.Connecting => "Connecting...",
             _ => "Click on Find Coyote to connect"
         };
-        _frequencySlider = ModuleConfig.Config.BluetoothConnection.FrequencyMs;
         _selectedDevice = FlowManager.HubId;
 
         _batteryLevel = FlowManager.BatteryLevel.Value;
@@ -196,7 +229,7 @@
         {
             _bluetoothSearchOutput = "Found a Coyote V3";
             var deviceId = bluetoothDevices.First(device => device.Name == "47L121000").Id;
-            ModuleConfig.Config.BluetoothConnection.CoyoteAddress = deviceId;
+            ModuleConfig.Config.CoyoteConfig.CoyoteAddress = deviceId;
             ModuleConfig.SaveDeferred();
             await FlowManager.ConnectCoyote();
         }
@@ -222,13 +255,6 @@
     
     private void OnSettingsValueChange()
     {
-        ModuleConfig.SaveDeferred();
-    }
-    
-    private void OnSettingsValueChangeInt(int i)
-    {
-        _frequencySlider = i;
-        ModuleConfig.Config.BluetoothConnection.FrequencyMs = i;
         ModuleConfig.SaveDeferred();
     }
 }

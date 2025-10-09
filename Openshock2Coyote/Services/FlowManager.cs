@@ -53,7 +53,7 @@ public class FlowManager
     
     public async Task LoadConfigAndStart()
     {
-        if (_config.Config.BluetoothConnection.CoyoteAddress != string.Empty)
+        if (_config.Config.CoyoteConfig.CoyoteAddress != string.Empty)
             await ConnectCoyote();
         
         if (_config.Config.Hub.Hub != Guid.Empty)
@@ -138,12 +138,19 @@ public class FlowManager
         var hubConfig = _config.Config.Hub;
         
         var packetTasks = commandList.Commands
-            .SkipWhile(command => command.Type != ShockerCommandType.Shock || command.Id != hubConfig.ChannelAId && command.Id != hubConfig.ChannelBId)
+            .Where(command => (command.Type == ShockerCommandType.Shock || (command.Type == ShockerCommandType.Vibrate && _config.Config.CoyoteConfig.Vibrate)) 
+                              && (command.Id == hubConfig.ChannelAId || command.Id == hubConfig.ChannelBId))
             .Select(command =>
             {
-                Channel channel;
-                channel = command.Id == _config.Config.Hub.ChannelAId ? Channel.A : Channel.B;
-                
+                var channel = command.Id == _config.Config.Hub.ChannelAId ? Channel.A : Channel.B;
+
+                command.Intensity = command.Type switch
+                {
+                    ShockerCommandType.Vibrate => (byte)(_config.Config.CoyoteConfig.VibrateMultiplier * command.Intensity),
+                    ShockerCommandType.Shock => (byte)(_config.Config.CoyoteConfig.ShockMultiplier * command.Intensity),
+                    _ => command.Intensity
+                };
+
                 return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, command.Duration, command.Intensity));
             }
         );
@@ -160,7 +167,7 @@ public class FlowManager
     
     public async Task ConnectCoyote()
     {
-        var coyoteAddress = _config.Config.BluetoothConnection.CoyoteAddress;
+        var coyoteAddress = _config.Config.CoyoteConfig.CoyoteAddress;
         if (coyoteAddress == string.Empty)
         {
             return;

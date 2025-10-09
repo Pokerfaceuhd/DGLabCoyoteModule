@@ -11,7 +11,6 @@ using openshock2coyote.Config;
 using openshock2coyote.Services;
 
 [assembly:RequiredPermission(TokenPermissions.Devices_Auth)]
-[assembly:RequiredPermission(TokenPermissions.Devices_Edit)]
 [assembly:DesktopModule(typeof(Openshock2CoyoteModule), "openshock2coyote", "openshock2coyote")]
 
 namespace openshock2coyote;
