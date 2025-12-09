@@ -130,12 +130,16 @@ public class FlowManager
 
         await DeviceConnection.InitializeAsync().ConfigureAwait(false);
     }
-
+    
     private async Task OnControlMessage(ShockerCommandList commandList)
     {
         if (CoyoteConnection == null) return;
         
         var hubConfig = _config.Config.Hub;
+
+        var shockerStops = commandList.Commands.Where(command => command.Type == ShockerCommandType.Stop);
+        foreach (var shockerCommand in shockerStops)
+            CoyoteConnection.StopCommand(shockerCommand.Id == _config.Config.Hub.ChannelAId ? Channel.A : Channel.B);
         
         var packetTasks = commandList.Commands
             .Where(command => (command.Type == ShockerCommandType.Shock || (command.Type == ShockerCommandType.Vibrate && _config.Config.CoyoteConfig.Vibrate)) 
@@ -143,15 +147,18 @@ public class FlowManager
             .Select(command =>
             {
                 var channel = command.Id == _config.Config.Hub.ChannelAId ? Channel.A : Channel.B;
-
-                command.Intensity = command.Type switch
+                
+                var multiplierRange = command.Type switch
                 {
-                    ShockerCommandType.Vibrate => (byte)(_config.Config.CoyoteConfig.VibrateMultiplier * command.Intensity),
-                    ShockerCommandType.Shock => (byte)(_config.Config.CoyoteConfig.ShockMultiplier * command.Intensity),
-                    _ => command.Intensity
+                    ShockerCommandType.Vibrate => _config.Config.CoyoteConfig.VibrateMultiplierRange,
+                    ShockerCommandType.Shock => _config.Config.CoyoteConfig.ShockMultiplierRange,
+                    ShockerCommandType.Stop => throw new ("Unsupported channel type"),
+                    _ => throw new NotImplementedException()
                 };
 
-                return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, command.Duration, command.Intensity));
+                command.Intensity = (byte)(multiplierRange.Min * 100 + command.Intensity * (multiplierRange.Max - multiplierRange.Min));
+
+                return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, (byte)(100*multiplierRange.Max),command.Duration, command.Intensity));
             }
         );
         await Task.WhenAll(packetTasks);

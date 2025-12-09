@@ -334,8 +334,6 @@ public sealed class DeviceConnection : IAsyncDisposable
         {
             case GatewayToHubMessagePayload.ItemKind.ShockerCommandList:
                 await OnControlMessage.Raise(wsRequest.Payload.Value.Item1);    
-                Console.WriteLine(DateTime.UtcNow.ToString("O") + " - " + (DateTime.UtcNow - lastMessage).TotalMilliseconds);
-                
                 lastMessage = DateTime.UtcNow;
                 break;
         }

@@ -11,6 +11,8 @@ using OpenShock.MinimalEvents;
 using openshock2coyote.Config;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
+using static System.String;
+using Channel = openshock2coyote.Models.Coyote.Channel;
 
 namespace openshock2coyote;
 
@@ -34,14 +36,14 @@ public class CoyoteConnection
     private GattCharacteristic? _waveformWriteCharacteristic;
     private GattCharacteristic? _batteryCharacteristic;
     
-    private byte _number = 0;
-    private byte _cStrengthA = 0;
-    private byte _cStrengthB = 0;
+    private byte _number;
+    private byte _cStrengthA = 100;
+    private byte _cStrengthB = 100;
     
     public IAsyncMinimalEventObservable OnClose => _onClose;
     private readonly AsyncMinimalEvent _onClose = new();
-    
-    private static readonly int TimeMsBetweenPackets = 100;
+
+    private const int TimeMsBetweenPackets = 100;
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(TimeMsBetweenPackets));
     
     private readonly ConcurrentQueue<SingleChannelWaveformSeries> _incomingWaveformPackets = new();
@@ -53,6 +55,8 @@ public class CoyoteConnection
     
     private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
+
+    private byte[] _lastBFDirectiveCommand = new byte[7];
     
     public CoyoteConnection(
         ILogger<CoyoteConnection> logger,
@@ -123,6 +127,13 @@ public class CoyoteConnection
         {
             while (await _timer.WaitForNextTickAsync())
             {
+                var bfDirectiveCommand = BfDirectiveBuilder.Build(_config.Config.CoyoteConfig);
+                if (!bfDirectiveCommand.SequenceEqual(_lastBFDirectiveCommand))
+                {
+                    await SendCommand(bfDirectiveCommand);
+                    _lastBFDirectiveCommand = bfDirectiveCommand;
+                }
+                
                 while (_incomingWaveformPackets.TryDequeue(out var waveformPacket))
                     _waveformPacketQueue.Add(waveformPacket);
 
@@ -138,18 +149,18 @@ public class CoyoteConnection
                     _ => 10
                 };
 
-                WaveformBuilder waveformBuilder = new(_cStrengthA, _cStrengthB, frequencyHz);
+                WaveformBuilder waveformBuilder = new(frequencyHz, _cStrengthA, _cStrengthB);
                 foreach (var waveform in currentTickWaveforms)
                 {
                     waveformBuilder.AddChannelWaveform(waveform);
                 }
 
-                _cStrengthA = waveformBuilder._strengthA;
-                _cStrengthB = waveformBuilder._strengthB;
+                _cStrengthA = waveformBuilder.StrengthA;
+                _cStrengthB = waveformBuilder.StrengthB;
 
-                var command = waveformBuilder.ConvertToCommand(_number);
-
-                await _waveformWriteCharacteristic!.WriteValueWithoutResponseAsync(command);
+                var waveformCommand = waveformBuilder.ConvertToCommand(_number);
+                
+                await SendCommand(waveformCommand);
 
                 _number++;
                 if (_number > 0b1111)
@@ -174,10 +185,22 @@ public class CoyoteConnection
 
     public Task Control(SingleChannelWaveformSeries waveformPacket)
     {
+        _logger.LogInformation("Channel: {Channel}, Duration: {Duration}ms, Intensity: {Intensity}", waveformPacket.Channel, waveformPacket.Duration, waveformPacket.Intensity);
         _incomingWaveformPackets.Enqueue(waveformPacket);
         return Task.CompletedTask;
     }
-    
+
+    public void StopCommand(Channel channel)
+    {
+        _logger.LogInformation("Stopping Channel: {Channel}", channel);
+        _waveformPacketQueue.RemoveAll(waveform => waveform.Channel == channel);
+    }
+
+    private async Task SendCommand(byte[] command)
+    {
+        await _waveformWriteCharacteristic!.WriteValueWithoutResponseAsync(command);
+    }
+
     public async Task Close()
     {
         _logger.LogDebug("Closing Coyote connection");

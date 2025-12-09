@@ -6,6 +6,7 @@
 @using InTheHand.Bluetooth
 @using OpenShock.Desktop.ModuleBase.Config
 @using OpenShock.Serialization.Gateway
+@using openshock2coyote.Models.Coyote
 @implements IAsyncDisposable
 
 @page "/dash/hub"
@@ -78,36 +79,78 @@
             </MudExpansionPanel>
             <MudExpansionPanel Icon="@Icons.Material.Filled.Bolt" Text="Shock Settings">
                 <MudDivider/>
-                <MudGrid Spacing="2">
+                <MudGrid Spacing="2" Justify="Justify.SpaceEvenly">
                     <MudItem xs="12">
                         <MudSlider T="int" Step="1" Value="@ModuleConfig.Config.CoyoteConfig.DutyCycle" 
                                    ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.DutyCycle = value; ModuleConfig.SaveDeferred(); }"
                                    Min="10" Max="1000" Size="Size.Medium">Cycle time: @(ModuleConfig.Config.CoyoteConfig.DutyCycle)ms</MudSlider>
                     </MudItem>
                     <MudDivider/>
-                    <MudItem xs="12">
-                        <MudText>Increase to get the theoretical maximum of 200 Intensity (I hope, you know what you're doing)</MudText>
+                    <MudItem xs="6">
+                        <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min = value; 
+                                       if (ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min > ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max) 
+                                       { 
+                                           ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max = ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min;
+                                       } 
+                                       ModuleConfig.SaveDeferred();
+                                   }"  
+                                   Min="0" Max="2" Step="0.01f">Min Shock Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min * 100))%</MudSlider>
                     </MudItem>
-                    <MudItem xs="12">
-                        <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.ShockMultiplier" 
-                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.ShockMultiplier = value; ModuleConfig.SaveDeferred(); }"  
-                                   Min="0" Max="2" Step="0.01f">Shock Multiplier: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplier * 100))%</MudSlider>
+                    <MudItem xs="6">
+                        <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max = value; 
+                                       if (ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min > ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max) 
+                                       { 
+                                           ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min = ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max;
+                                       } 
+                                       ModuleConfig.SaveDeferred();
+                                   }"  
+                                   Min="0" Max="2" Step="0.01f">Max Shock Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max * 100))%</MudSlider>
                     </MudItem>
                     
                     <MudDivider/>
-                    <MudItem xs="12">
-                        <MudText>This simulates vibration by just giving you a lower intensity shock</MudText>
-                    </MudItem>
                     <MudItem Style="align-content: center" xs="2">
                         <MudCheckBox @bind-Value="@ModuleConfig.Config.CoyoteConfig.Vibrate">Vibration</MudCheckBox>
                     </MudItem>
-                    <MudItem xs="10">
-                        <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.VibrateMultiplier" 
-                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.VibrateMultiplier = value; ModuleConfig.SaveDeferred(); }" 
-                                   Min="0" Max="2" Step="0.01f">Vibration Multiplier: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplier * 100))%</MudSlider>
+                    <MudItem xs="4">
+                        <MudSlider Disabled="!ModuleConfig.Config.CoyoteConfig.Vibrate" T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min = value; 
+                                       if (ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min > ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max) 
+                                       { 
+                                           ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max = ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min;
+                                       } 
+                                       ModuleConfig.SaveDeferred(); 
+                                   }" 
+                                   Min="0" Max="0.5f" Step="0.01f">Min Vibration Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min* 100))%</MudSlider>
                     </MudItem>
-
-
+                    <MudItem xs="4">
+                        <MudSlider Disabled="!ModuleConfig.Config.CoyoteConfig.Vibrate" T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max" 
+                                   ValueChanged="value => {ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max= value;
+                                       if (ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min > ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max) 
+                                       { 
+                                           ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min = ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max;
+                                       }  
+                                       ModuleConfig.SaveDeferred(); 
+                                   }" 
+                                   Min="0" Max="0.5f" Step="0.01f">Max Vibration Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max * 100))%</MudSlider>
+                    </MudItem>
+                    <MudItem Style="align-content: center" xs="2">
+                        <MudButton Disabled="!ModuleConfig.Config.CoyoteConfig.Vibrate"
+                                   Variant="Variant.Filled"
+                                   OnClick="TestVibrate"
+                                   FullWidth="true"
+                                   Color="Color.Primary">
+                            @if (_vibrateTest)
+                            {
+                                <MudText>Stop Test</MudText>
+                            }
+                            else
+                            {
+                                <MudText>Test Vibration</MudText>
+                            }
+                        </MudButton>
+                    </MudItem>
                 </MudGrid>
             </MudExpansionPanel>
         </MudExpansionPanels>
@@ -136,9 +179,11 @@
     
     private string _bluetoothSearchOutput = "";
     private CancellationTokenSource _searchTokenSource = new();
+    private CancellationTokenSource _vibrateTestTokenSource = new();
     
     private bool _searching;
     private bool _disableButton;
+    private bool _vibrateTest;
     private byte _batteryLevel;
     
     
@@ -173,8 +218,6 @@
             _batteryLevel = state;
             return InvokeAsync(StateHasChanged);
         });
-        
-        
     }
 
     private static Color GetBatteryPercentageColor(byte percentage) =>
@@ -242,6 +285,35 @@
     private async Task SelectedDeviceChanged()
     {
         await FlowManager.SelectedDeviceChanged(_selectedDevice);
+    }
+
+    private async Task TestVibrate()
+    {
+        if (_vibrateTest)
+        {
+            await _vibrateTestTokenSource.CancelAsync();
+            _vibrateTestTokenSource = new CancellationTokenSource();
+            _vibrateTest = false;
+            return;
+        }
+        
+        var vibrateToken = _vibrateTestTokenSource.Token;
+        _vibrateTest = true;
+        var multiplierRange = ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange;
+        const int steps = 20;
+        for (var i = 0; i < steps+1; i++)
+        {
+            var intensity = (byte)(multiplierRange.Min * 100 + (100/steps * i) * (multiplierRange.Max - multiplierRange.Min));
+            FlowManager.CoyoteConnection?.Control(new SingleChannelWaveformSeries(Channel.A, (byte)(100*multiplierRange.Max),200, intensity));
+            FlowManager.CoyoteConnection?.Control(new SingleChannelWaveformSeries(Channel.B, (byte)(100*multiplierRange.Max),200, intensity));
+            await Task.Delay(150, vibrateToken);
+            if (!vibrateToken.IsCancellationRequested) continue;
+            _vibrateTestTokenSource = new CancellationTokenSource();
+            FlowManager.CoyoteConnection?.StopCommand(Channel.A);
+            FlowManager.CoyoteConnection?.StopCommand(Channel.B);
+            return;
+        }
+        _vibrateTest = false;
     }
 
     public async ValueTask DisposeAsync()
