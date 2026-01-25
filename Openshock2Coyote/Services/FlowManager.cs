@@ -9,11 +9,14 @@ using OpenShock.Serialization.Gateway;
 using OpenShock.Serialization.Types;
 using openshock2coyote.Config;
 using openshock2coyote.Models.Coyote;
+using openshock2coyote.Utils;
 
 namespace openshock2coyote.Services;
 
 public class FlowManager
 {
+    private const int MaxAutoConnectMult = 60;
+    
     public Guid HubId { get; private set; } = Guid.Empty;
     
     public DeviceConnection? DeviceConnection { get; private set; } = null;
@@ -37,6 +40,9 @@ public class FlowManager
     private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
     
+    private CancellationTokenSource _autoConnectCancellationTokenSource = new();
+    private Task _autoConnectTask = Task.CompletedTask;
+    
     public FlowManager(
         IModuleConfig<Openshock2CoyoteConfig> config,
         ILogger<FlowManager> logger,
@@ -58,6 +64,71 @@ public class FlowManager
         
         if (_config.Config.Hub.Hub != Guid.Empty)
             await SelectedDeviceChanged(_config.Config.Hub.Hub);
+        
+        StartAutoConnect();
+    }
+
+    public void StartAutoConnect()
+    {
+        if (_config.Config.CoyoteConfig.AutoConnect)
+        {
+            _autoConnectTask = OsTask.Run(AutoConnect);
+        }
+        else
+        {
+            _autoConnectCancellationTokenSource.Cancel();
+            _autoConnectCancellationTokenSource = new CancellationTokenSource();
+        }
+    }
+
+    private async Task AutoConnect()
+    {
+        var intervalMult = 1;
+        while (_config.Config.CoyoteConfig.AutoConnect)
+        {
+            await Task.Delay(1000 * intervalMult, _autoConnectCancellationTokenSource.Token);
+            while (_coyoteConnectionState.Value != WebsocketConnectionState.Disconnected && _config.Config.CoyoteConfig.AutoConnect)
+            {
+                intervalMult = 1;
+                await Task.Delay(3000, _autoConnectCancellationTokenSource.Token);
+            }
+            await FindCoyote();
+            
+            intervalMult++;
+            if (intervalMult > MaxAutoConnectMult)
+            {
+                intervalMult = MaxAutoConnectMult;
+            }
+        }
+    }
+
+    private async Task FindCoyote()
+    {
+        await ConnectCoyote();
+        await Task.Delay(1000, _autoConnectCancellationTokenSource.Token);
+        while (CoyoteConnectionState.Value == WebsocketConnectionState.Connecting)
+        {
+            await Task.Delay(100, _autoConnectCancellationTokenSource.Token); 
+        }
+
+        if (CoyoteConnectionState.Value == WebsocketConnectionState.Connected)
+        {
+            return;
+        }
+        _logger.LogInformation("Searching for coyote devices...");
+        var bluetoothDevices = await BluetoothService.GetBluetoothDevices();
+        try
+        {
+            var deviceId = bluetoothDevices.First(device => device.Name == "47L121000").Id;
+            _logger.LogInformation("Coyote V3 found");
+            _config.Config.CoyoteConfig.CoyoteAddress = deviceId;
+            _config.SaveDeferred();
+            await ConnectCoyote();
+        }
+        catch (InvalidOperationException)
+        {
+            _logger.LogInformation("Coyote could not be found");
+        }
     }
     
     public async Task SelectedDeviceChanged(Guid id)

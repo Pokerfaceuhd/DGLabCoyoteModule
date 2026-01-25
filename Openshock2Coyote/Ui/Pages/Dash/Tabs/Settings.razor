@@ -18,6 +18,7 @@
                 <div class="d-flex align-items-center gap-2">
                     <MudButton OnClick="StopCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Cancel" Color="Color.Primary">Stop</MudButton>
                     <MudButton Disabled="_disableButton" OnClick="FindCoyote" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Bluetooth" Color="Color.Primary" Class="flex-grow-1">Connect to Coyote</MudButton>
+                    <MudCheckBox @bind-Value="@ModuleConfig.Config.CoyoteConfig.AutoConnect" @bind-Value:after="AutoConnectChanged" Label="Auto Connect"></MudCheckBox>
                 </div>
                 <MudProgressLinear Color="Color.Primary" Indeterminate="@_searching"/>
                 <MudIcon Style="justify-content: center" Color="GetConnectionStateColor(FlowManager.CoyoteConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
@@ -245,7 +246,7 @@
         _searchTokenSource = new CancellationTokenSource();
         _searching = false;
     }
-
+    
     private async Task FindCoyote()
     {
         var searchToken = _searchTokenSource.Token;
@@ -285,6 +286,12 @@
     private async Task SelectedDeviceChanged()
     {
         await FlowManager.SelectedDeviceChanged(_selectedDevice);
+    }
+
+    private void AutoConnectChanged()
+    {
+        FlowManager.StartAutoConnect();
+        OnSettingsValueChange();
     }
 
     private async Task TestVibrate()
