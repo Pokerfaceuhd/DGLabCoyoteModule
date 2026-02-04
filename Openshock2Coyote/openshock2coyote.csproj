@@ -6,7 +6,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>openshock2coyote</RootNamespace>
-        <Version>0.1.0</Version>
+        <Version>0.3.0</Version>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
 
         <Configurations>Release;Debug</Configurations>
