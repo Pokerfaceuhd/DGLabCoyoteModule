@@ -41,7 +41,6 @@ public class FlowManager
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
     
     private CancellationTokenSource _autoConnectCancellationTokenSource = new();
-    private Task _autoConnectTask = Task.CompletedTask;
     
     public FlowManager(
         IModuleConfig<Openshock2CoyoteConfig> config,
@@ -72,7 +71,7 @@ public class FlowManager
     {
         if (_config.Config.CoyoteConfig.AutoConnect)
         {
-            _autoConnectTask = OsTask.Run(AutoConnect);
+            OsTask.Run(AutoConnect);
         }
         else
         {
