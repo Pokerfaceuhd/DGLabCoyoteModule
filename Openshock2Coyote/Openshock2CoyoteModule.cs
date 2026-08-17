@@ -9,6 +9,7 @@ using OpenShock.Desktop.ModuleBase.Models;
 using openshock2coyote.Ui.Pages.Dash.Tabs;
 using openshock2coyote.Config;
 using openshock2coyote.Services;
+using openshock2coyote.Utils;
 
 [assembly:RequiredPermission(TokenPermissions.Devices_Auth)]
 [assembly:DesktopModule(typeof(Openshock2CoyoteModule), "openshock2coyote", "openshock2coyote")]
@@ -31,6 +32,8 @@ public class Openshock2CoyoteModule : DesktopModuleBase
     
     public override async Task Setup()
     {
+        Console.SetOut(new PhotinoLogFilterWriter(Console.Out));
+
         var config = await ModuleInstanceManager.GetModuleConfig<Openshock2CoyoteConfig>();
         ModuleServiceProvider = BuildServices(config);
         

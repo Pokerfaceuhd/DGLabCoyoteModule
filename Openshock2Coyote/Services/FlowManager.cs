@@ -16,32 +16,32 @@ namespace openshock2coyote.Services;
 public class FlowManager
 {
     private const int MaxAutoConnectMult = 60;
-    
+
     public Guid HubId { get; private set; } = Guid.Empty;
-    
+
     public DeviceConnection? DeviceConnection { get; private set; } = null;
     public CoyoteConnection? CoyoteConnection { get; private set; } = null;
-    
+
     private readonly IModuleConfig<Openshock2CoyoteConfig> _config;
     private readonly ILogger<FlowManager> _logger;
     private readonly ILogger<DeviceConnection> _deviceConnectionLogger;
     private readonly ILogger<CoyoteConnection> _coyoteConnectionLogger;
     private readonly IOpenShockService _openShockService;
-    
+
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _deviceConnectionState =
         new(WebsocketConnectionState.Disconnected);
     public IAsyncUpdatable<WebsocketConnectionState> DeviceConnectionState => _deviceConnectionState;
-    
+
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _coyoteConnectionState =
         new(WebsocketConnectionState.Disconnected);
-    
+
     public IAsyncUpdatable<WebsocketConnectionState> CoyoteConnectionState => _coyoteConnectionState;
-    
+
     private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
-    
+
     private CancellationTokenSource _autoConnectCancellationTokenSource = new();
-    
+
     public FlowManager(
         IModuleConfig<Openshock2CoyoteConfig> config,
         ILogger<FlowManager> logger,
@@ -55,15 +55,15 @@ public class FlowManager
         _coyoteConnectionLogger = coyoteConnectionLogger;
         _openShockService = openShockService;
     }
-    
+
     public async Task LoadConfigAndStart()
     {
         if (_config.Config.CoyoteConfig.CoyoteAddress != string.Empty)
             await ConnectCoyote();
-        
+
         if (_config.Config.Hub.Hub != Guid.Empty)
             await SelectedDeviceChanged(_config.Config.Hub.Hub);
-        
+
         StartAutoConnect();
     }
 
@@ -92,7 +92,7 @@ public class FlowManager
                 await Task.Delay(3000, _autoConnectCancellationTokenSource.Token);
             }
             await FindCoyote();
-            
+
             intervalMult++;
             if (intervalMult > MaxAutoConnectMult)
             {
@@ -107,7 +107,7 @@ public class FlowManager
         await Task.Delay(1000, _autoConnectCancellationTokenSource.Token);
         while (CoyoteConnectionState.Value == WebsocketConnectionState.Connecting)
         {
-            await Task.Delay(100, _autoConnectCancellationTokenSource.Token); 
+            await Task.Delay(100, _autoConnectCancellationTokenSource.Token);
         }
 
         if (CoyoteConnectionState.Value == WebsocketConnectionState.Connected)
@@ -129,25 +129,25 @@ public class FlowManager
             _logger.LogInformation("Coyote could not be found");
         }
     }
-    
+
     public async Task SelectedDeviceChanged(Guid id)
     {
         _config.Config.Hub.Hub = id;
         await _config.Save();
-        
+
         HubId = id;
-        
+
         if (HubId == Guid.Empty)
         {
             _logger.LogError("Id is empty, stopping connection");
             await StopHubConnection();
             return;
         }
-        
+
         _logger.LogInformation("Selected device changed to {Id}", id);
         var deviceDetails = await _openShockService.Api.GetHub(id);
 
-        
+
         if (deviceDetails.IsT0)
         {
             var token = deviceDetails.AsT0.Value.Token;
@@ -156,14 +156,14 @@ public class FlowManager
                 _logger.LogError("Token is null or empty, make sure your api token has device.auth permission");
                 return;
             }
-            
+
             _logger.LogDebug("Starting device connection");
 
             await StartHubConnection(id, token);
             return;
         }
 
-       
+
         deviceDetails.Switch(success => {}, found =>
             {
                 _logger.LogError("Hub not found");
@@ -172,10 +172,10 @@ public class FlowManager
             {
                 _logger.LogError("Unauthorized, make sure your logged in");
             });
-        
+
         throw new Exception("Unhandled OneOf type");
     }
-    
+
     private async Task<bool> StopHubConnection()
     {
         if (DeviceConnection == null) return false;
@@ -188,7 +188,7 @@ public class FlowManager
     private async Task StartHubConnection(Guid id, string authToken)
     {
         await StopHubConnection();
-        
+
         DeviceConnection =
             new DeviceConnection(_openShockService.Auth.BackendBaseUri, authToken, _deviceConnectionLogger);
         DeviceConnection.OnControlMessage += OnControlMessage;
@@ -200,35 +200,25 @@ public class FlowManager
 
         await DeviceConnection.InitializeAsync().ConfigureAwait(false);
     }
-    
+
     private async Task OnControlMessage(ShockerCommandList commandList)
     {
         if (CoyoteConnection == null) return;
-        
+
         var hubConfig = _config.Config.Hub;
 
         var shockerStops = commandList.Commands.Where(command => command.Type == ShockerCommandType.Stop);
         foreach (var shockerCommand in shockerStops)
             CoyoteConnection.StopCommand(shockerCommand.Id == _config.Config.Hub.ChannelAId ? Channel.A : Channel.B);
-        
+
         var packetTasks = commandList.Commands
-            .Where(command => (command.Type == ShockerCommandType.Shock || (command.Type == ShockerCommandType.Vibrate && _config.Config.CoyoteConfig.Vibrate)) 
+            .Where(command => (command.Type == ShockerCommandType.Shock || (command.Type == ShockerCommandType.Vibrate && _config.Config.CoyoteConfig.Vibrate))
                               && (command.Id == hubConfig.ChannelAId || command.Id == hubConfig.ChannelBId))
             .Select(command =>
             {
                 var channel = command.Id == _config.Config.Hub.ChannelAId ? Channel.A : Channel.B;
-                
-                var multiplierRange = command.Type switch
-                {
-                    ShockerCommandType.Vibrate => _config.Config.CoyoteConfig.VibrateMultiplierRange,
-                    ShockerCommandType.Shock => _config.Config.CoyoteConfig.ShockMultiplierRange,
-                    ShockerCommandType.Stop => throw new ("Unsupported channel type"),
-                    _ => throw new NotImplementedException()
-                };
 
-                command.Intensity = (byte)(multiplierRange.Min * 100 + command.Intensity * (multiplierRange.Max - multiplierRange.Min));
-
-                return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, (byte)(100*multiplierRange.Max),command.Duration, command.Intensity));
+                return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, (byte)100,command.Duration, (byte)100));
             }
         );
         await Task.WhenAll(packetTasks);
@@ -241,7 +231,7 @@ public class FlowManager
         _coyoteConnectionState.Value = WebsocketConnectionState.Disconnected;
         _batteryLevel.Value = 0;
     }
-    
+
     public async Task ConnectCoyote()
     {
         var coyoteAddress = _config.Config.CoyoteConfig.CoyoteAddress;
@@ -256,7 +246,7 @@ public class FlowManager
         }
 
         CoyoteConnection = new CoyoteConnection(_coyoteConnectionLogger, _config, coyoteAddress);
-        
+
         await CoyoteConnection.State.Updated.SubscribeAsync(state =>
         {
             _coyoteConnectionState.Value = state;

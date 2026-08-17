@@ -32,32 +32,32 @@ public class CoyoteConnection
 
     private static readonly BluetoothUuid BatteryLevelServiceId = BluetoothUuid.FromShortId(0x180A);
     private static readonly BluetoothUuid BatteryLevelCharacteristicId = BluetoothUuid.FromShortId(0x1500);
-    
+
     private GattCharacteristic? _waveformWriteCharacteristic;
     private GattCharacteristic? _batteryCharacteristic;
-    
+
     private byte _number;
     private byte _cStrengthA = 100;
     private byte _cStrengthB = 100;
-    
+
     public IAsyncMinimalEventObservable OnClose => _onClose;
     private readonly AsyncMinimalEvent _onClose = new();
 
     private const int TimeMsBetweenPackets = 100;
     private readonly PeriodicTimer _timer = new(TimeSpan.FromMilliseconds(TimeMsBetweenPackets));
-    
+
     private readonly ConcurrentQueue<SingleChannelWaveformSeries> _incomingWaveformPackets = new();
-    private readonly List<SingleChannelWaveformSeries> _waveformPacketQueue = new List<SingleChannelWaveformSeries>();
-    
+    private readonly List<SingleChannelWaveformSeries> _waveformPacketQueue = [];
+
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _state =
         new(WebsocketConnectionState.NotStarted);
     public IAsyncUpdatable<WebsocketConnectionState> State => _state;
-    
+
     private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
 
     private byte[] _lastBFDirectiveCommand = new byte[7];
-    
+
     public CoyoteConnection(
         ILogger<CoyoteConnection> logger,
         IModuleConfig<Openshock2CoyoteConfig> config,
@@ -66,7 +66,7 @@ public class CoyoteConnection
         _logger = logger;
         _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
         _config = config;
-        
+
         _deviceId = deviceId;
     }
 
@@ -94,6 +94,7 @@ public class CoyoteConnection
 
         _logger.LogInformation("Pairing with device: {DeviceName}", _device.Name);
         await _device.Gatt.ConnectAsync();
+        _logger.LogInformation("Pairing done, connecting Services: {DeviceName}", _device.Name);
         if (!_device.Gatt.IsConnected)
         {
             _logger.LogError("Pairing unsuccessful");
@@ -119,7 +120,7 @@ public class CoyoteConnection
     {
         if (e.Value != null) _batteryLevel.Value = e.Value[0];
     }
-    
+
     private async Task WriteLoop()
     {
         _incomingWaveformPackets.Clear();
@@ -133,7 +134,7 @@ public class CoyoteConnection
                     await SendCommand(bfDirectiveCommand);
                     _lastBFDirectiveCommand = bfDirectiveCommand;
                 }
-                
+
                 while (_incomingWaveformPackets.TryDequeue(out var waveformPacket))
                     _waveformPacketQueue.Add(waveformPacket);
 
@@ -159,7 +160,7 @@ public class CoyoteConnection
                 _cStrengthB = waveformBuilder.StrengthB;
 
                 var waveformCommand = waveformBuilder.ConvertToCommand(_number);
-                
+
                 await SendCommand(waveformCommand);
 
                 _number++;
@@ -179,13 +180,12 @@ public class CoyoteConnection
             _batteryLevel.Value = 0;
             _state.Value = WebsocketConnectionState.Disconnected;
         }
-        
+
         _logger.LogDebug("WriteLoop cancelled");
     }
 
     public Task Control(SingleChannelWaveformSeries waveformPacket)
     {
-        _logger.LogInformation("Channel: {Channel}, Duration: {Duration}ms, Intensity: {Intensity}", waveformPacket.Channel, waveformPacket.Duration, waveformPacket.Intensity);
         _incomingWaveformPackets.Enqueue(waveformPacket);
         return Task.CompletedTask;
     }
@@ -207,7 +207,7 @@ public class CoyoteConnection
         _device?.Gatt.Disconnect();
         await _onClose.InvokeAsyncParallel();
     }
-    
+
     private bool _disposed;
 
     public async ValueTask DisposeAsync()
@@ -223,10 +223,10 @@ public class CoyoteConnection
             _logger.LogError(e, "Error during DisposeAsync, Calling Close failed");
         }
         _device?.Gatt.Disconnect();
-        
+
         if (_currentCts != null) await _currentCts.CancelAsync();
         await _disposeCts.CancelAsync();
-        
+
         _linkedCts.Dispose();
         _currentCts?.Dispose();
         _disposeCts.Dispose();
