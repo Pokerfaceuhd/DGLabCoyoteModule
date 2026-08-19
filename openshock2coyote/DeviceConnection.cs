@@ -1,4 +1,4 @@
-﻿using System.Net;
+﻿﻿using System.Net;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -10,10 +10,10 @@ using OneOf;
 using OneOf.Types;
 using OpenShock.SDK.CSharp.Updatables;
 using OpenShock.SDK.CSharp.Utils;
-using OpenShock.Serialization.Gateway;
-using openshock2coyote.Models.Backend;
-using openshock2coyote.Utils;
+using OpenShock.Serialization.Deprecated.DoNotUse.V1;
 using Timer = System.Timers.Timer;
+using openshock2coyote.Utils;
+using openshock2coyote.Models.Backend;
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
 
 namespace openshock2coyote;
@@ -28,7 +28,7 @@ public sealed class DeviceConnection : IAsyncDisposable
     private readonly string _authToken;
     private ClientWebSocket? _clientWebSocket = null;
     private DateTimeOffset _connectedAt = DateTimeOffset.MinValue;
-    
+
     private readonly Timer _keepAliveTimer = new(TimeSpan.FromSeconds(25))
     {
         AutoReset = true
@@ -51,7 +51,7 @@ public sealed class DeviceConnection : IAsyncDisposable
         _httpClient = new HttpClient { BaseAddress = backend };
         _httpClient.DefaultRequestHeaders.Add("User-Agent", GetUserAgent());
         _httpClient.DefaultRequestHeaders.Add("Device-Token", authToken);
-        
+
         _keepAliveTimer.Elapsed += KeepAliveTimerElapsed;
     }
 
@@ -104,10 +104,10 @@ public sealed class DeviceConnection : IAsyncDisposable
     public struct Reconnecting;
     public struct LcgAssignmentFailed;
     public struct Unauthorized;
-    
-    
+
+
     public Task InitializeAsync() => ConnectAsync();
-    
+
 
     private async Task<OneOf<Success, Disposed, Reconnecting, LcgAssignmentFailed, Unauthorized>> ConnectAsync()
     {
@@ -116,9 +116,9 @@ public sealed class DeviceConnection : IAsyncDisposable
             _logger.LogWarning("Dispose requested, not connecting");
             return new Disposed();
         }
-        
+
         _keepAliveTimer.Stop();
-        
+
         _logger.LogDebug("Connecting to hub endpoint");
 
         _state.Value = WebsocketConnectionState.Connecting;
@@ -135,11 +135,11 @@ public sealed class DeviceConnection : IAsyncDisposable
         _channel = Channel.CreateUnbounded<HubToGatewayMessage>();
 
         OpenShock.SDK.CSharp.Models.BaseResponse<LcgNodeResponse> lcgNodeResponse;
-        
+
         try
         {
             var lcgAssignment = await _httpClient.GetAsync("/1/device/assignLCG");
-            
+
             if (!lcgAssignment.IsSuccessStatusCode)
             {
                 _logger.LogError("Unsuccessful LCG assignment, [{StatusCode}]", lcgAssignment.StatusCode);
@@ -154,10 +154,10 @@ public sealed class DeviceConnection : IAsyncDisposable
                         await Reconnect();
                         return new Reconnecting();
                 }
-                
+
                 throw new Exception("Unknown error while assigning LCG");
             }
-            
+
             var lcg = await lcgAssignment.Content.ReadAsStreamAsync();
             var lcgModel = await JsonSerializer.DeserializeAsync<OpenShock.SDK.CSharp.Models.BaseResponse<LcgNodeResponse>>(lcg, JsonUtils.JsonOptions);
             if(lcgModel?.Data == null) throw new Exception("Failed to deserialize LCG model");
@@ -170,12 +170,12 @@ public sealed class DeviceConnection : IAsyncDisposable
             await Reconnect();
             return new LcgAssignmentFailed();
         }
-        
+
         _clientWebSocket = new ClientWebSocket();
 
         var liveClientAssembly = GetType().Assembly;
         var liveClientVersion = liveClientAssembly.GetName().Version!;
-        
+
         _clientWebSocket.Options.SetRequestHeader("Device-Token", _authToken);
         _clientWebSocket.Options.SetRequestHeader("Firmware-Version", $"{liveClientVersion.Major}.{liveClientVersion.Minor}.{liveClientVersion.Build}");
         _clientWebSocket.Options.SetRequestHeader("User-Agent", GetUserAgent());
@@ -219,7 +219,7 @@ public sealed class DeviceConnection : IAsyncDisposable
     private async Task Reconnect()
     {
         _logger.LogWarning("Reconnecting in 3 seconds");
-        
+
         _state.Value = WebsocketConnectionState.Connecting;
         _clientWebSocket?.Abort();
         _clientWebSocket?.Dispose();
@@ -321,19 +321,19 @@ public sealed class DeviceConnection : IAsyncDisposable
 
         OsTask.Run(ConnectAsync, _dispose.Token);
     }
-    
+
     DateTime lastMessage = DateTime.UtcNow;
 
     private async Task HandleMessage(GatewayToHubMessage? wsRequest)
     {
         if(wsRequest?.Payload is null) return;
-        
+
         if(_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace("Received kind [{Kind}]", wsRequest.Payload.Value.Kind);
-        
+
         switch (wsRequest.Payload.Value.Kind)
         {
             case GatewayToHubMessagePayload.ItemKind.ShockerCommandList:
-                await OnControlMessage.Raise(wsRequest.Payload.Value.Item1);    
+                await OnControlMessage.Raise(wsRequest.Payload.Value.Item1);
                 lastMessage = DateTime.UtcNow;
                 break;
         }
@@ -347,7 +347,7 @@ public sealed class DeviceConnection : IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        
+
         _keepAliveTimer.Stop();
         _keepAliveTimer.Dispose();
 

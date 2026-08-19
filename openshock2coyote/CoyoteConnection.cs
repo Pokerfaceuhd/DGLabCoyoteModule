@@ -12,6 +12,7 @@ using openshock2coyote.Config;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
 using static System.String;
+using OpenShock.SDK.CSharp.Models;
 using Channel = openshock2coyote.Models.Coyote.Channel;
 
 namespace openshock2coyote;
@@ -25,6 +26,10 @@ public class CoyoteConnection
     private readonly CancellationTokenSource _disposeCts = new();
     private CancellationTokenSource? _currentCts;
     private CancellationTokenSource _linkedCts;
+
+    #if NET10_0_LINUX
+    private LinuxBluetoothAgent? _bluetoothAgent;
+    #endif
 
     private static readonly BluetoothUuid WaveformServiceId = BluetoothUuid.FromShortId(0x180C);
     private static readonly BluetoothUuid WaveformReadCharacteristicId = BluetoothUuid.FromShortId(0x150B);
@@ -63,6 +68,8 @@ public class CoyoteConnection
         IModuleConfig<Openshock2CoyoteConfig> config,
         String deviceId)
     {
+
+
         _logger = logger;
         _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
         _config = config;
@@ -72,6 +79,11 @@ public class CoyoteConnection
 
     public async Task OpenAsync()
     {
+        #if NET10_0_LINUX
+                _bluetoothAgent =
+                    await LinuxBluetoothAgent.RegisterAsync();
+        #endif
+        
         _batteryLevel.Value = 0;
         _state.Value = WebsocketConnectionState.Connecting;
         _logger.LogDebug($"Opening connection to coyote {_deviceId}");
@@ -94,7 +106,6 @@ public class CoyoteConnection
 
         _logger.LogInformation("Pairing with device: {DeviceName}", _device.Name);
         await _device.Gatt.ConnectAsync();
-        _logger.LogInformation("Pairing done, connecting Services: {DeviceName}", _device.Name);
         if (!_device.Gatt.IsConnected)
         {
             _logger.LogError("Pairing unsuccessful");
@@ -102,6 +113,7 @@ public class CoyoteConnection
             _state.Value = WebsocketConnectionState.Disconnected;
             return;
         }
+        _logger.LogInformation("Pairing done, connecting Services: {DeviceName}", _device.Name);
         _state.Value = WebsocketConnectionState.Connected;
 
         var waveformService = await _device.Gatt.GetPrimaryServiceAsync(WaveformServiceId);

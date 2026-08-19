@@ -1,0 +1,9 @@
+<Project>
+    <!-- Copy this file to local.settings.props (gitignored) and fill in your own paths.
+         ModuleDir: the OpenShock Desktop modules folder the host loads this module from.
+         HostDir: the OpenShock Desktop install directory, used to avoid bundling dlls it already ships. -->
+    <PropertyGroup>
+        <ModuleDir>C:\Users\you\AppData\Local\OpenShock\Desktop\modules\openshock2coyote</ModuleDir>
+        <HostDir>C:\Users\you\AppData\Local\Programs\OpenShock.Desktop</HostDir>
+    </PropertyGroup>
+</Project>

@@ -1,13 +1,6 @@
-Openshock2Coyote/obj/
-<<<<<<< Updated upstream
-Openshock2Coyote/bin/
+openshock2coyote/obj/
+openshock2coyote/bin/
+.idea/
 .vscode/
 .zed/
-Openshock2Coyote/Utils/PhotinoLogFilterWriter.cs
-Openshock2Coyote/bin/Debug/
-=======
-Openshock2Coyote/bin/Debug/net9.0/
-.vscode/
-.zed/
-Openshock2Coyote/Utils/PhotinoLogFilterWriter.cs
->>>>>>> Stashed changes
+openshock2coyote/local.settings.props
