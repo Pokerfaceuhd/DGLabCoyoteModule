@@ -2,32 +2,23 @@
 
 namespace openshock2coyote.Utils;
 
-public class WaveformBuilder
+public class WaveformBuilder(byte frequency, byte cStrengthA, byte cStrengthB)
 {
     private const byte Head = 0xB0;
 
-    public byte StrengthA;
-    
-    public byte StrengthB;
-    
-    private readonly byte[] _frequencyA;
-    
-    private readonly byte[] _frequencyB;
-    
-    private readonly byte[] _intensityA;
-    
-    private readonly byte[] _intensityB;
+    public byte StrengthA = cStrengthA;
+
+    public byte StrengthB = cStrengthB;
+
+    private readonly byte[] _frequencyA = [frequency,frequency,frequency,frequency];
+
+    private readonly byte[] _frequencyB = [frequency,frequency,frequency,frequency];
+
+    private readonly byte[] _intensityA = "\0\0\0\0"u8.ToArray();
+
+    private readonly byte[] _intensityB = "\0\0\0\0"u8.ToArray();
 
     private bool _changedStrength = false;
-    public WaveformBuilder(byte frequency, byte cStrengthA, byte cStrengthB)
-    {
-        StrengthA = 0;
-        StrengthB = 0;
-        _frequencyA = [frequency,frequency,frequency,frequency];
-        _frequencyB = [frequency,frequency,frequency,frequency];
-        _intensityA = "\0\0\0\0"u8.ToArray();
-        _intensityB = "\0\0\0\0"u8.ToArray();
-    }
 
     public void AddChannelWaveform(SingleChannelWaveform singleChannelWaveform)
     {
@@ -35,7 +26,7 @@ public class WaveformBuilder
         {
             for (var i = 0; i < singleChannelWaveform.Intensity.Length; i++)
                 _intensityA[i] = Math.Max(_intensityA[i], singleChannelWaveform.Intensity[i]);
-            
+
             if (singleChannelWaveform.Strength <= StrengthA) return;
             StrengthA = singleChannelWaveform.Strength;
         }
@@ -43,13 +34,13 @@ public class WaveformBuilder
         {
             for (var i = 0; i < singleChannelWaveform.Intensity.Length; i++)
                 _intensityB[i] = Math.Max(_intensityB[i], singleChannelWaveform.Intensity[i]);
-            
+
             if (singleChannelWaveform.Strength <= StrengthB) return;
             StrengthB = singleChannelWaveform.Strength;
         }
         _changedStrength = true;
     }
-    
+
     public byte[] ConvertToCommand(byte number)
     {
         var data = new byte[20];
@@ -59,7 +50,7 @@ public class WaveformBuilder
         {
             strengthInterpretation = 0b1111;
         }
-        
+
         var numberAndStrengthInterpretation = (byte)(number << 4 | strengthInterpretation);
 
         data[0] = Head;
@@ -71,7 +62,7 @@ public class WaveformBuilder
         data[5]  = _frequencyA[1];
         data[6]  = _frequencyA[2];
         data[7]  = _frequencyA[3];
-        
+
         data[8]  = _intensityA[0];
         data[9]  = _intensityA[1];
         data[10] = _intensityA[2];
@@ -86,7 +77,7 @@ public class WaveformBuilder
         data[17] = _intensityB[1];
         data[18] = _intensityB[2];
         data[19] = _intensityB[3];
-        
+
         return data.ToArray();
     }
 }

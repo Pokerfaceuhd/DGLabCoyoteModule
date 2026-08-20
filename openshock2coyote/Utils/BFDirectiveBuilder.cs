@@ -5,15 +5,15 @@ namespace openshock2coyote.Utils;
 
 public static class BfDirectiveBuilder
 {
-    private const byte Head = 0x00;
+    private const byte Head = 0xBF;
 
     public static byte[] Build(CoyoteConfig config)
     {
-        var data = new byte[7];
+        byte[] data = new byte[7];
 
         BFDirectiveConfig bfDirective = config.BfDirective;
 
-        var maxStrength = (byte)Math.Max(config.ShockMultiplierRange.Max * 100, config.VibrateMultiplierRange.Max * 100);
+        byte maxStrength = (byte)Math.Clamp(Math.Max(config.ShockMultiplierRange.Max, config.VibrateMultiplierRange.Max) * 100, 0, 200);
 
         data[0] = Head;
         data[1] = maxStrength;

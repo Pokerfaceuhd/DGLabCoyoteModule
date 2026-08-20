@@ -1,4 +1,4 @@
-#if NET9_0_LINUX
+#if NET10_0_LINUX
 
 using Tmds.DBus;
 

@@ -1,4 +1,5 @@
-﻿using OpenShock.Desktop.ModuleBase;
+﻿using System.Reflection;
+using OpenShock.Desktop.ModuleBase;
 using openshock2coyote;
 using OpenShock.Desktop.ModuleBase.Navigation;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,9 +32,22 @@ public class Openshock2CoyoteModule : DesktopModuleBase
 
     public override async Task Setup()
     {
+        TryEnablePhotinoLogFilter();
+
         var config = await ModuleInstanceManager.GetModuleConfig<Openshock2CoyoteConfig>();
         ModuleServiceProvider = BuildServices(config);
 
+    }
+
+    // PhotinoLogFilterWriter is a gitignored local-only file (not present in every checkout),
+    // so this is resolved by name instead of a compile-time reference.
+    private static void TryEnablePhotinoLogFilter()
+    {
+        var filterType = Assembly.GetExecutingAssembly().GetType("openshock2coyote.Utils.PhotinoLogFilterWriter");
+        if (filterType == null) return;
+
+        var writer = (TextWriter)Activator.CreateInstance(filterType, Console.Out)!;
+        Console.SetOut(writer);
     }
 
     private ServiceProvider BuildServices(IModuleConfig<Openshock2CoyoteConfig> config)

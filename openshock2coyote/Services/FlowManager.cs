@@ -200,11 +200,22 @@ public class FlowManager(
             .Select(command =>
             {
                 var channel = command.Id == config.Config.Hub.ChannelAId ? Channel.A : Channel.B;
+                var strength = CalculateStrength(command.Type, command.Intensity);
 
-                return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, 100, command.Duration, 100));
+                return CoyoteConnection.Control(new SingleChannelWaveformSeries(channel, strength, command.Duration, 100));
             }
         );
         await Task.WhenAll(packetTasks);
+    }
+
+    public byte CalculateStrength(ShockerCommandType type, byte intensity)
+    {
+        var range = type == ShockerCommandType.Vibrate
+            ? config.Config.CoyoteConfig.VibrateMultiplierRange
+            : config.Config.CoyoteConfig.ShockMultiplierRange;
+
+        var fraction = range.Min + (range.Max - range.Min) * (intensity / 100f);
+        return (byte)Math.Clamp(fraction * 200, 1, 200);
     }
 
     public async Task DisconnectCoyote()

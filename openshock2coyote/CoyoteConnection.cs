@@ -31,8 +31,8 @@ public class CoyoteConnection
     private LinuxBluetoothAgent? _bluetoothAgent;
     #endif
 
-    private static readonly BluetoothUuid WaveformServiceId = BluetoothUuid.FromShortId(0x180C);
-    private static readonly BluetoothUuid WaveformReadCharacteristicId = BluetoothUuid.FromShortId(0x150B);
+    private static readonly BluetoothUuid WaveformWriteServiceId = BluetoothUuid.FromShortId(0x180C);
+    private static readonly BluetoothUuid WaveformNotifyCharacteristicId = BluetoothUuid.FromShortId(0x150B);
     private static readonly BluetoothUuid WaveformWriteCharacteristicId = BluetoothUuid.FromShortId(0x150A);
 
     private static readonly BluetoothUuid BatteryLevelServiceId = BluetoothUuid.FromShortId(0x180A);
@@ -40,10 +40,9 @@ public class CoyoteConnection
 
     private GattCharacteristic? _waveformWriteCharacteristic;
     private GattCharacteristic? _batteryCharacteristic;
+    private GattCharacteristic? _waveformNotifyCharacteristic;
 
     private byte _number;
-    private byte _cStrengthA = 100;
-    private byte _cStrengthB = 100;
 
     public IAsyncMinimalEventObservable OnClose => _onClose;
     private readonly AsyncMinimalEvent _onClose = new();
@@ -61,15 +60,13 @@ public class CoyoteConnection
     private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
     public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
 
-    private byte[] _lastBFDirectiveCommand = new byte[7];
+    private byte[] _lastBfDirectiveCommand = new byte[7];
 
     public CoyoteConnection(
         ILogger<CoyoteConnection> logger,
         IModuleConfig<Openshock2CoyoteConfig> config,
         String deviceId)
     {
-
-
         _logger = logger;
         _linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
         _config = config;
@@ -83,7 +80,7 @@ public class CoyoteConnection
                 _bluetoothAgent =
                     await LinuxBluetoothAgent.RegisterAsync();
         #endif
-        
+
         _batteryLevel.Value = 0;
         _state.Value = WebsocketConnectionState.Connecting;
         _logger.LogDebug($"Opening connection to coyote {_deviceId}");
@@ -116,14 +113,19 @@ public class CoyoteConnection
         _logger.LogInformation("Pairing done, connecting Services: {DeviceName}", _device.Name);
         _state.Value = WebsocketConnectionState.Connected;
 
-        var waveformService = await _device.Gatt.GetPrimaryServiceAsync(WaveformServiceId);
+        var waveformService = await _device.Gatt.GetPrimaryServiceAsync(WaveformWriteServiceId);
         var batteryService = await _device.Gatt.GetPrimaryServiceAsync(BatteryLevelServiceId);
 
         _batteryCharacteristic = await batteryService.GetCharacteristicAsync(BatteryLevelCharacteristicId);
         _waveformWriteCharacteristic = await waveformService.GetCharacteristicAsync(WaveformWriteCharacteristicId);
+        _waveformNotifyCharacteristic = await waveformService.GetCharacteristicAsync(WaveformNotifyCharacteristicId);
 
         _batteryCharacteristic.CharacteristicValueChanged += UpdateBattery;
         _batteryLevel.Value = (await _batteryCharacteristic.ReadValueAsync())[0];
+        await _batteryCharacteristic.StartNotificationsAsync();
+
+        _waveformNotifyCharacteristic.CharacteristicValueChanged += NotifyUpdate;
+        //await _waveformNotifyCharacteristic.StartNotificationsAsync();
 
         _ = OsTask.Run(WriteLoop);
     }
@@ -133,18 +135,25 @@ public class CoyoteConnection
         if (e.Value != null) _batteryLevel.Value = e.Value[0];
     }
 
+    private void NotifyUpdate(object? sender, GattCharacteristicValueChangedEventArgs e)
+    {
+        if (e.Value != null) _logger.LogInformation("received: {bytes}", Join(";",e.Value));
+    }
+
     private async Task WriteLoop()
     {
+        _logger.LogInformation("Starting Writeloop");
         _incomingWaveformPackets.Clear();
         try
         {
             while (await _timer.WaitForNextTickAsync())
             {
                 var bfDirectiveCommand = BfDirectiveBuilder.Build(_config.Config.CoyoteConfig);
-                if (!bfDirectiveCommand.SequenceEqual(_lastBFDirectiveCommand))
+                if (!bfDirectiveCommand.SequenceEqual(_lastBfDirectiveCommand))
                 {
+                    _logger.LogInformation("Send new BFDirective {BFDirective}", Join(";",bfDirectiveCommand));
                     await SendCommand(bfDirectiveCommand);
-                    _lastBFDirectiveCommand = bfDirectiveCommand;
+                    _lastBfDirectiveCommand = bfDirectiveCommand;
                 }
 
                 while (_incomingWaveformPackets.TryDequeue(out var waveformPacket))
@@ -162,16 +171,18 @@ public class CoyoteConnection
                     _ => 10
                 };
 
-                WaveformBuilder waveformBuilder = new(frequencyHz, _cStrengthA, _cStrengthB);
+                WaveformBuilder waveformBuilder = new(frequencyHz, 0, 0);
                 foreach (var waveform in currentTickWaveforms)
                 {
                     waveformBuilder.AddChannelWaveform(waveform);
                 }
 
-                _cStrengthA = waveformBuilder.StrengthA;
-                _cStrengthB = waveformBuilder.StrengthB;
-
                 var waveformCommand = waveformBuilder.ConvertToCommand(_number);
+
+                if (waveformCommand[8] > 0)
+                {
+                    _logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
+                }
 
                 await SendCommand(waveformCommand);
 
@@ -216,6 +227,10 @@ public class CoyoteConnection
     public async Task Close()
     {
         _logger.LogDebug("Closing Coyote connection");
+
+        if (_batteryCharacteristic != null) _batteryCharacteristic.CharacteristicValueChanged -= UpdateBattery;
+        if (_waveformNotifyCharacteristic != null) _waveformNotifyCharacteristic.CharacteristicValueChanged -= NotifyUpdate;
+
         _device?.Gatt.Disconnect();
         await _onClose.InvokeAsyncParallel();
     }

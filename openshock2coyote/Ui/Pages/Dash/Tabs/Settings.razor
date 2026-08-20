@@ -7,6 +7,7 @@
 @using OpenShock.Desktop.ModuleBase.Config
 @using OpenShock.Serialization.Gateway
 @using openshock2coyote.Models.Coyote
+@using OpenShock.Serialization.Types
 @implements IAsyncDisposable
 
 @page "/dash/hub"
@@ -306,13 +307,15 @@
         
         var vibrateToken = _vibrateTestTokenSource.Token;
         _vibrateTest = true;
-        var multiplierRange = ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange;
+        FlowManager.CoyoteConnection?.StopCommand(Channel.A);
+        FlowManager.CoyoteConnection?.StopCommand(Channel.B);
         const int steps = 20;
         for (var i = 0; i < steps+1; i++)
         {
-            var intensity = (byte)(multiplierRange.Min * 100 + (100/steps * i) * (multiplierRange.Max - multiplierRange.Min));
-            FlowManager.CoyoteConnection?.Control(new SingleChannelWaveformSeries(Channel.A, (byte)(100*multiplierRange.Max),200, intensity));
-            FlowManager.CoyoteConnection?.Control(new SingleChannelWaveformSeries(Channel.B, (byte)(100*multiplierRange.Max),200, intensity));
+            var rampIntensity = (byte)Math.Clamp(100 * i / steps, 0, 100);
+            var strength = FlowManager.CalculateStrength(ShockerCommandType.Vibrate, rampIntensity);
+            FlowManager.CoyoteConnection?.Control(new SingleChannelWaveformSeries(Channel.A, strength, 200, 100));
+            FlowManager.CoyoteConnection?.Control(new SingleChannelWaveformSeries(Channel.B, strength, 200, 100));
             await Task.Delay(150, vibrateToken);
             if (!vibrateToken.IsCancellationRequested) continue;
             _vibrateTestTokenSource = new CancellationTokenSource();
