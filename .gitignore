@@ -4,3 +4,4 @@ openshock2coyote/bin/
 .vscode/
 .zed/
 openshock2coyote/local.settings.props
+openshock2coyote/Utils/PhotinoLogFilterWriter.cs
