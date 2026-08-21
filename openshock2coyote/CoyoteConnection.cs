@@ -177,9 +177,8 @@ public class CoyoteConnection
 
                 if (waveformCommand[8] > 0)
                 {
-                    _logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
-                }
-
+                    //_logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
+                } 
                 await SendCommand(waveformCommand);
 
                 _number++;
