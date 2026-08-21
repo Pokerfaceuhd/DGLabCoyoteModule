@@ -83,10 +83,10 @@
             <PlatformDependentDllNames Include="InTheHand.BluetoothLE.dll" />
             <PlatformDependentDllNames Include="Linux.Bluetooth.dll" Condition="'$(IsWindowsBuild)' != 'true'" />
             <PlatformDependentDllNames Include="Tmds.DBus.dll" Condition="'$(IsWindowsBuild)' != 'true'" />
-            <PlatformDependentDllNames Include="WinRT.Runtime.dll" Condition="'$(IsWindowsBuild)' == 'true'" />
             <PlatformDependentDllNames Include="Microsoft.Windows.SDK.NET.dll" Condition="'$(IsWindowsBuild)' == 'true'" />
             <PlatformDependentDll Include="@(PlatformDependentDllNames->'$(TargetDir)%(Identity)')" Condition="Exists('$(TargetDir)%(Identity)')" />
             <UselessDllNames Include="Tmds.DBus.dll" Condition="'$(IsWindowsBuild)' == 'true'" />
+            <UselessDllNames Include="WinRT.Runtime.dll" Condition="'$(IsWindowsBuild)' == 'true'" />
             <UselessDll Include="@(UselessDllNames->'$(TargetDir)%(Identity)')" Condition="Exists('$(TargetDir)%(Identity)')" />
 
             <DependencyDll Include="$(TargetDir)*.dll" Exclude="$(TargetPath);@(HostDll->'$(TargetDir)%(Filename)%(Extension)');@(PlatformDependentDll);@(UselessDll)" />

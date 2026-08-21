@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using openshock2coyote.Config;
 
 namespace openshock2coyote.Utils;

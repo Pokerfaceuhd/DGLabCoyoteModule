@@ -1,18 +1,14 @@
 ﻿using System.Collections.Concurrent;
-using System.Threading.Channels;
-using openshock2coyote.Services;
 using InTheHand.Bluetooth;
 using LucHeart.WebsocketLibrary;
 using LucHeart.WebsocketLibrary.Updatables;
 using Microsoft.Extensions.Logging;
-using OpenShock.Desktop.ModuleBase.Api;
 using OpenShock.Desktop.ModuleBase.Config;
 using OpenShock.MinimalEvents;
 using openshock2coyote.Config;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
 using static System.String;
-using OpenShock.SDK.CSharp.Models;
 using Channel = openshock2coyote.Models.Coyote.Channel;
 
 namespace openshock2coyote;
@@ -181,7 +177,7 @@ public class CoyoteConnection
 
                 if (waveformCommand[8] > 0)
                 {
-                    //_logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
+                    _logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
                 }
 
                 await SendCommand(waveformCommand);

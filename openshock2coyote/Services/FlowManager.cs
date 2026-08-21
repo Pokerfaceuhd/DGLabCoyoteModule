@@ -214,8 +214,8 @@ public class FlowManager(
             ? config.Config.CoyoteConfig.VibrateMultiplierRange
             : config.Config.CoyoteConfig.ShockMultiplierRange;
 
-        var fraction = range.Min + (range.Max - range.Min) * (intensity / 100f);
-        return (byte)Math.Clamp(fraction * 200, 1, 200);
+        var strength = range.Min * 100 + (range.Max - range.Min) * intensity;
+        return (byte)Math.Clamp(strength, 1, 200);
     }
 
     public async Task DisconnectCoyote()

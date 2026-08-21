@@ -1,6 +1,4 @@
-﻿using OpenShock.Serialization.Gateway;
-
-namespace openshock2coyote.Models.Coyote;
+﻿namespace openshock2coyote.Models.Coyote;
 
 public struct SingleChannelWaveformSeries
 {
