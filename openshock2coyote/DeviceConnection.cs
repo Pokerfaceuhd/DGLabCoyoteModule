@@ -236,7 +236,7 @@ public sealed class DeviceConnection : IAsyncDisposable
         if (string.IsNullOrEmpty(runtimeVersion)) runtimeVersion = "Unknown Runtime";
 
         return
-            $"LocalRelay/{liveClientVersion.Major}.{liveClientVersion.Minor}.{liveClientVersion.Build} " +
+            $"openshock2coyote/{liveClientVersion.Major}.{liveClientVersion.Minor}.{liveClientVersion.Build} " +
             $"({runtimeVersion}; {UserAgentUtils.GetOs()})";
     }
 

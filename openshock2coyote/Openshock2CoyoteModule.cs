@@ -24,9 +24,15 @@ public class Openshock2CoyoteModule : DesktopModuleBase
     [
         new()
         {
-            Name = "Settings",
+            Name = "Coyote",
             ComponentType = typeof(Settings),
             Icon = IconOneOf.FromSvg(Icons.Material.Filled.Settings)
+        },
+        new()
+        {
+            Name = "Pawprints",
+            ComponentType = typeof(Pawprints),
+            Icon = IconOneOf.FromSvg(Icons.Material.Filled.Pets)
         }
     ];
 
@@ -64,11 +70,23 @@ public class Openshock2CoyoteModule : DesktopModuleBase
 
         services.AddSingleton<FlowManager>();
 
+        if (OperatingSystem.IsLinux())
+        {
+            services.AddLinuxBluetoothLE();
+        }
+        else
+        {
+            services.AddBluetoothLE();
+        }
+        
+        services.AddSingleton<BluetoothScanner>();
+        
         return services.BuildServiceProvider();
     }
 
     public override async Task Start()
     {
+        await ModuleServiceProvider.GetRequiredService<BluetoothScanner>().StartAsync();
         await ModuleServiceProvider.GetRequiredService<FlowManager>().LoadConfigAndStart();
     }
 }

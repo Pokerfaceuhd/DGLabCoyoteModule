@@ -2,12 +2,15 @@
 using Microsoft.Extensions.Logging;
 using OpenShock.Desktop.ModuleBase.Api;
 using OpenShock.Desktop.ModuleBase.Config;
+using OpenShock.Desktop.ModuleBase.Models;
 using OpenShock.SDK.CSharp.Updatables;
 using OpenShock.Serialization.Deprecated.DoNotUse.V1;
 using OpenShock.Serialization.Types;
 using openshock2coyote.Config;
+using openshock2coyote.Config.Actions;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
+using openshock2coyote.Utils.PawprintMessages.ReadMessages;
 
 namespace openshock2coyote.Services;
 
@@ -16,12 +19,16 @@ public class FlowManager(
     ILogger<FlowManager> logger,
     ILogger<DeviceConnection> deviceConnectionLogger,
     ILogger<CoyoteConnection> coyoteConnectionLogger,
+    ILogger<PawprintService> pawprintServiceLogger,
+    ILogger<PawprintConnection> pawprintConnectionLogger,
+    BluetoothScanner bluetoothScanner,
     IOpenShockService openShockService)
 {
     private const int MaxAutoConnectMult = 60;
 
     public Guid HubId { get; private set; } = Guid.Empty;
 
+    public PawprintService? PawprintService { get; private set; }
     private DeviceConnection? DeviceConnection { get; set; }
     public CoyoteConnection? CoyoteConnection { get; private set; }
 
@@ -46,7 +53,9 @@ public class FlowManager(
 
         if (config.Config.Hub.Hub != Guid.Empty)
             await SelectedDeviceChanged(config.Config.Hub.Hub);
-
+        
+        PawprintService = new PawprintService(config, pawprintServiceLogger, pawprintConnectionLogger, bluetoothScanner, openShockService);
+        
         StartAutoConnect();
     }
 
@@ -83,7 +92,7 @@ public class FlowManager(
             }
         }
     }
-
+    
     private async Task FindCoyote()
     {
         await ConnectCoyote();
@@ -207,7 +216,7 @@ public class FlowManager(
         );
         await Task.WhenAll(packetTasks);
     }
-
+    
     public byte CalculateStrength(ShockerCommandType type, byte intensity)
     {
         var range = type == ShockerCommandType.Vibrate

@@ -72,11 +72,6 @@ public class CoyoteConnection
 
     public async Task OpenAsync()
     {
-        #if NET10_0_LINUX
-                _bluetoothAgent =
-                    await LinuxBluetoothAgent.RegisterAsync();
-        #endif
-
         _batteryLevel.Value = 0;
         _state.Value = WebsocketConnectionState.Connecting;
         _logger.LogDebug($"Opening connection to coyote {_deviceId}");
@@ -147,7 +142,7 @@ public class CoyoteConnection
                 var bfDirectiveCommand = BfDirectiveBuilder.Build(_config.Config.CoyoteConfig);
                 if (!bfDirectiveCommand.SequenceEqual(_lastBfDirectiveCommand))
                 {
-                    //_logger.LogInformation("Send new BFDirective {BFDirective}", Join(";",bfDirectiveCommand));
+                    _logger.LogInformation("Send new BFDirective {BFDirective}", Join(";",bfDirectiveCommand));
                     await SendCommand(bfDirectiveCommand);
                     _lastBfDirectiveCommand = bfDirectiveCommand;
                 }
@@ -177,7 +172,7 @@ public class CoyoteConnection
 
                 if (waveformCommand[8] > 0)
                 {
-                    //_logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
+                    _logger.LogInformation("Send new waveform {waveform}", Join(";",waveformCommand));
                 } 
                 await SendCommand(waveformCommand);
 
