@@ -1,10 +1,8 @@
-using openshock2coyote.Config.Actions;
-
 namespace openshock2coyote.Config.Triggers;
 
-public class ProbabilityTrigger : BaseTrigger
+public class ProbabilityTrigger
 {
-    public override byte TriggerMode => 0x04;
+    public const byte TriggerMode = 0x04;
 
     public byte[] TriggerIds { get; set; } = [1,2,3,4,5,6];
     public byte[] TriggerProbabilities { get; set; } = [33,0,0,0,0,0];

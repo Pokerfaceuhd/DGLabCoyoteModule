@@ -9,7 +9,7 @@ using OpenShock.Desktop.ModuleBase.Config;
 using OpenShock.MinimalEvents;
 using Shiny.BluetoothLE;
 using openshock2coyote.Config;
-using openshock2coyote.Config.Triggers;
+using openshock2coyote.Utils;
 using openshock2coyote.Utils.PawprintMessages.ReadMessages;
 using openshock2coyote.Utils.PawprintMessages.WriteMessages;
 
@@ -33,7 +33,11 @@ public class PawprintConnection : IAsyncDisposable
     private bool _disposed;
 
     public string CurrentlyConnectedDeviceId { get; private set; } = "";
-    public byte Battery { get; private set; }
+    
+    private readonly AsyncUpdatableVariable<byte> _battery =
+        new(0);
+
+    public IAsyncUpdatable<byte> Battery => _battery;
 
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _state =
         new(WebsocketConnectionState.NotStarted);
@@ -55,11 +59,15 @@ public class PawprintConnection : IAsyncDisposable
     private readonly AsyncUpdatableVariable<RawInfoMessage> _currentRawData = new(new RawInfoMessage([0,0,0,0,0,0,0,0,0]));
     public IAsyncUpdatable<RawInfoMessage?> CurrentRawData => _currentRawData;
     
-    public event Func<TriggerActiveMessage, BaseTrigger, Task>? OnTriggerActivated;
-    public event Func<TriggerDeactivatedMessage, BaseTrigger, Task>? OnTriggerDeactivated;
-    public event Func<ParameterChangeMessage, BaseTrigger, Task>? OnParameterChanged;
+    public event Func<TriggerActiveMessage, Task>? OnTriggerActivated;
+    public event Func<TriggerDeactivatedMessage, Task>? OnTriggerDeactivated;
+    public event Func<ParameterChangeMessage, Task>? OnParameterChanged;
     public event Func<ReportAutomaticAngleDetection, Task>? OnAutomaticAngleDetection;
-
+    public event Func<Task>? ConfigUpdated;
+    private readonly Timer? _configTimer;
+    private readonly SemaphoreSlim _configLock = new(1, 1);
+    private bool _receivedStartupMessage;
+    
     public PawprintConnection(
         ILogger<PawprintConnection> logger,
         IModuleConfig<Openshock2CoyoteConfig> config,
@@ -68,6 +76,9 @@ public class PawprintConnection : IAsyncDisposable
         _logger = logger;
         _config = config;
         Color = color;
+        
+        _configTimer = new Timer(_ => OsTask.Run(UpdateConfig),
+            null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     public async Task OpenAsync(IPeripheral peripheral)
@@ -92,27 +103,23 @@ public class PawprintConnection : IAsyncDisposable
             CurrentlyConnectedDeviceId = peripheral.Uuid;
             _state.Value = WebsocketConnectionState.Connecting;
 
+            var strength = await peripheral.ReadRssiAsync(cancellationToken);
+            if (strength == 0) { return; }
+            
             _logger.LogInformation(
-                "Connecting to Pawprint: {DeviceName} ({DeviceId})",
+                "Connecting to Pawprint: {DeviceName} ({DeviceId}) Strength {Rssi}dBm",
                 peripheral.Name,
-                peripheral.Uuid);
-
-            // Subscribe before connecting so we cannot miss the connection.
-            var connectedTask = peripheral
-                .WhenConnected()
-                .Take(1)
-                .Timeout(TimeSpan.FromSeconds(12))
-                .ToTask(cancellationToken);
+                peripheral.Uuid,
+                strength);
 
             // PawprintService handles reconnection itself.
-            peripheral.Connect(new ConnectionConfig(AutoConnect: false));
-
-            await connectedTask;
+            _logger.LogInformation("connecting");
+            await peripheral.ConnectAsync(new ConnectionConfig(AutoConnect: false), cancellationToken);
 
             _logger.LogInformation(
-                "Connected to Pawprint: {DeviceName}",
-                peripheral.Name);
-
+                "Connected to Pawprint: {DeviceUuid}",
+                peripheral.Uuid);
+            
             _disconnectSubscription = peripheral
                 .WhenDisconnected()
                 .Subscribe(
@@ -127,13 +134,14 @@ public class PawprintConnection : IAsyncDisposable
             if (service is null)
                 throw new InvalidOperationException(
                     $"Pawprint GATT service {ServiceUuid} not found.");
-
+            
+            _logger.LogInformation("notificationSubscription");
             _notificationSubscription = peripheral
                 .NotifyCharacteristic(
                     ServiceUuid,
                     NotifyCharacteristicUuid)
                 .Subscribe(
-                    result => Notifications(result.Data.ToArray()),
+                    result => Notifications(result.Data),
                     ex =>
                     {
                         _logger.LogError(
@@ -143,12 +151,10 @@ public class PawprintConnection : IAsyncDisposable
                         OnDisconnected(peripheral);
                     });
             
-            await UpdateConfig();
-            
-            _logger.LogInformation(
-                "Pawprint GATT notifications enabled: {DeviceName}",
-                peripheral.Name);
+            _logger.LogInformation("UpdatePawprintSettings");
+            UpdatePawprintSettings();
         }
+        catch (InvalidOperationException) { }
         catch
         {
             await DisconnectCoreAsync();
@@ -174,19 +180,49 @@ public class PawprintConnection : IAsyncDisposable
 
         CurrentlyConnectedDeviceId = "";
         _state.Value = WebsocketConnectionState.Disconnected;
+        _battery.Value = 0;
+        _receivedStartupMessage = false;
     }
 
-    public async Task UpdateConfig()
+    public async Task Disconnect()
     {
-        var pawprintConfig = _config.Config.PawprintsConfig.Pawprints
-            .First(x => x.color == Color);
-        
-        await SendCommand(TriggerMessage.Build(pawprintConfig));
+        _logger.LogInformation("Got disconnect");
+        if (_peripheral != null) await _peripheral.DisconnectAsync(timeout: new TimeSpan(0, 0, 5));
+    }
+    
+    public void UpdatePawprintSettings()
+        => _configTimer?.Change(TimeSpan.FromMilliseconds(1000), Timeout.InfiniteTimeSpan);
+    
+    private async Task UpdateConfig()
+    {
+        await _configLock.WaitAsync();
+        try
+        {
+            var pawprintConfig = _config.Config.PawprintsConfig.Pawprints
+                .First(x => x.Color == Color);
+            
+            while (!_receivedStartupMessage && _state.Value != WebsocketConnectionState.Disconnected)
+            {
+                await Task.Delay(1000);
+                if (_receivedStartupMessage)
+                {
+                    _logger.LogInformation("Connection should have succeeded");
+                }
+            }
+            
+            await SendCommand(TriggerMessage.Build(pawprintConfig));
+            await ConfigUpdated.Raise();
+        }
+        catch (InvalidOperationException) { }
+        finally
+        {
+            _configLock.Release();
+        }
     }
     
     private async Task SendCommand(byte[] command)
     {
-        _logger.LogInformation("Send: {Bytes}", string.Join(";", command.Select(b => b.ToString("X2"))));
+        //_logger.LogInformation("Send: {Bytes}", string.Join(";", command.Select(b => b.ToString("X2"))));
         
         var peripheral = _peripheral
             ?? throw new InvalidOperationException("Pawprint is not connected.");
@@ -209,28 +245,31 @@ public class PawprintConnection : IAsyncDisposable
         if (message is not { Length: > 0 })
             return;
         
-        _logger.LogInformation("received: {Bytes}", string.Join(";", message.Select(b => b.ToString("X2"))));
+        //_logger.LogInformation("received: {Bytes}", string.Join(";", message.Select(b => b.ToString("X2"))));
         
         switch (message[0])
         {
+            case 0x53:
+                _receivedStartupMessage = true;
+                break;
             case 0x51:
                 var info = new GeneralInfoMessage(message);
-                Battery = info.BatteryLevel;
+                _battery.Value = info.BatteryLevel;
                 break;
 
             case 0x5A:
                 var eventActivate = new TriggerActiveMessage(message);
-                OnTriggerActivated?.Raise(eventActivate, _config.Config.PawprintsConfig.Pawprints[Color-1].Trigger);
+                OnTriggerActivated?.Raise(eventActivate);
                 break;
 
             case 0x5B:
                 var eventDeactivate = new TriggerDeactivatedMessage(message);
-                OnTriggerDeactivated?.Raise(eventDeactivate, _config.Config.PawprintsConfig.Pawprints[Color-1].Trigger);
+                OnTriggerDeactivated?.Raise(eventDeactivate);
                 break;
 
             case 0x5C:
                 var parameterChange = new ParameterChangeMessage(message);
-                OnParameterChanged?.Raise(parameterChange, _config.Config.PawprintsConfig.Pawprints[Color-1].Trigger);
+                OnParameterChanged?.Raise(parameterChange);
                 break;
 
             case 0xD0:
@@ -249,13 +288,13 @@ public class PawprintConnection : IAsyncDisposable
         await SendCommand([0x60]);
     }
 
-    public async Task Close()
+    private async Task Close()
     {
         await _connectionLock.WaitAsync();
 
         try
         {
-            _logger.LogDebug("Closing Pawprint connection");
+            _logger.LogInformation("Closing Pawprint connection");
 
             await DisconnectCoreAsync();
             await _onClose.InvokeAsyncParallel();
@@ -268,6 +307,8 @@ public class PawprintConnection : IAsyncDisposable
 
     private async Task DisconnectCoreAsync()
     {
+        _logger.LogInformation("Disconnecting Pawprint connection");
+        
         _state.Value = WebsocketConnectionState.Disconnected;
         
         if (_connectionCts != null)
@@ -304,6 +345,7 @@ public class PawprintConnection : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _logger.LogInformation("Disposing Pawprint connection");
         if (_disposed)
             return;
 

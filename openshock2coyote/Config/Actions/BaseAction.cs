@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using openshock2coyote.Config.Triggers;
 
 namespace openshock2coyote.Config.Actions;
 

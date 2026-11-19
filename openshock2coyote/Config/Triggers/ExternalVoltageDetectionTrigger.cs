@@ -2,11 +2,11 @@ using System.Text.Json.Serialization;
 
 namespace openshock2coyote.Config.Triggers;
 
-public class ExternalVoltageDetectionTrigger : BaseTrigger
+public class ExternalVoltageDetectionTrigger
 {
-    public override byte TriggerMode => 0x0F;
+    public const byte TriggerMode = 0x0F;
 
-    public required byte TriggerEventId { get; set; }
+    public byte TriggerEventId { get; set; } = 1;
     public InternalPullUp InternalPullUp { get; set; } = InternalPullUp.HighLevel;
     
     [JsonIgnore]
@@ -20,6 +20,7 @@ public class ExternalVoltageDetectionTrigger : BaseTrigger
     
     public JsonRange<byte> TargetVoltageRange { get; set; } = new() { Min = 100, Max = 255 };
     public byte ParameterMappingRange { get; set; } = 0;
+    public List<Guid> Actions { get; set; } = [];
 }
 
 public enum InternalPullUp

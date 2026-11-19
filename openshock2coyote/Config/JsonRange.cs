@@ -4,4 +4,5 @@ public class JsonRange<T> where T : struct
 {
     public required T Min { get; set; }
     public required T Max { get; set; }
+    public override string ToString() => $"{Min} – {Max}";
 }

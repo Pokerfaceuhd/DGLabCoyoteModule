@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
-using System.Reactive.Linq;
 using Microsoft.Extensions.Logging;
-using Shiny;
 using Shiny.BluetoothLE;
 
 namespace openshock2coyote.Services;
@@ -37,8 +35,7 @@ public sealed class BluetoothScanner(IBleManager bleManager,
                     return;
                 }
                 
-                logger.LogInformation("found {DeviceName}" , peripheral.Name);
-                
+                logger.LogInformation("Found Device {DeviceName}", peripheral.Name);
                 _devices[peripheral.Uuid] = peripheral;
             },
             ex => Console.Error.WriteLine(

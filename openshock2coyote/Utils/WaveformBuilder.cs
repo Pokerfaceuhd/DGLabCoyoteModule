@@ -18,7 +18,7 @@ public class WaveformBuilder(byte frequency, byte cStrengthA, byte cStrengthB)
 
     private readonly byte[] _intensityB = "\0\0\0\0"u8.ToArray();
 
-    private bool _changedStrength = false;
+    private bool _changedStrength;
 
     public void AddChannelWaveform(SingleChannelWaveform singleChannelWaveform)
     {

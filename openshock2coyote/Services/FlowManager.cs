@@ -2,15 +2,12 @@
 using Microsoft.Extensions.Logging;
 using OpenShock.Desktop.ModuleBase.Api;
 using OpenShock.Desktop.ModuleBase.Config;
-using OpenShock.Desktop.ModuleBase.Models;
 using OpenShock.SDK.CSharp.Updatables;
 using OpenShock.Serialization.Deprecated.DoNotUse.V1;
 using OpenShock.Serialization.Types;
 using openshock2coyote.Config;
-using openshock2coyote.Config.Actions;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
-using openshock2coyote.Utils.PawprintMessages.ReadMessages;
 
 namespace openshock2coyote.Services;
 
@@ -30,96 +27,24 @@ public class FlowManager(
 
     public PawprintService? PawprintService { get; private set; }
     private DeviceConnection? DeviceConnection { get; set; }
-    public CoyoteConnection? CoyoteConnection { get; private set; }
+    public CoyoteConnection CoyoteConnection { get; private set; }
 
     private readonly AsyncUpdatableVariable<WebsocketConnectionState> _deviceConnectionState =
         new(WebsocketConnectionState.Disconnected);
     public IAsyncUpdatable<WebsocketConnectionState> DeviceConnectionState => _deviceConnectionState;
 
-    private readonly AsyncUpdatableVariable<WebsocketConnectionState> _coyoteConnectionState =
-        new(WebsocketConnectionState.Disconnected);
-
-    public IAsyncUpdatable<WebsocketConnectionState> CoyoteConnectionState => _coyoteConnectionState;
-
-    private readonly AsyncUpdatableVariable<byte> _batteryLevel = new(0);
-    public IAsyncUpdatable<byte> BatteryLevel => _batteryLevel;
-
-    private CancellationTokenSource _autoConnectCancellationTokenSource = new();
+    public bool CoyoteTemporaryConnect = false;
 
     public async Task LoadConfigAndStart()
     {
-        if (config.Config.CoyoteConfig.CoyoteAddress != string.Empty)
-            await ConnectCoyote();
-
+        CoyoteConnection = new CoyoteConnection(coyoteConnectionLogger, config);
+        
         if (config.Config.Hub.Hub != Guid.Empty)
             await SelectedDeviceChanged(config.Config.Hub.Hub);
         
         PawprintService = new PawprintService(config, pawprintServiceLogger, pawprintConnectionLogger, bluetoothScanner, openShockService);
         
-        StartAutoConnect();
-    }
-
-    public void StartAutoConnect()
-    {
-        if (config.Config.CoyoteConfig.AutoConnect)
-        {
-            OsTask.Run(AutoConnect);
-        }
-        else
-        {
-            _autoConnectCancellationTokenSource.Cancel();
-            _autoConnectCancellationTokenSource = new CancellationTokenSource();
-        }
-    }
-
-    private async Task AutoConnect()
-    {
-        var intervalMult = 1;
-        while (config.Config.CoyoteConfig.AutoConnect)
-        {
-            await Task.Delay(1000 * intervalMult, _autoConnectCancellationTokenSource.Token);
-            while (_coyoteConnectionState.Value != WebsocketConnectionState.Disconnected && config.Config.CoyoteConfig.AutoConnect)
-            {
-                intervalMult = 1;
-                await Task.Delay(3000, _autoConnectCancellationTokenSource.Token);
-            }
-            await FindCoyote();
-
-            intervalMult++;
-            if (intervalMult > MaxAutoConnectMult)
-            {
-                intervalMult = MaxAutoConnectMult;
-            }
-        }
-    }
-    
-    private async Task FindCoyote()
-    {
-        await ConnectCoyote();
-        await Task.Delay(1000, _autoConnectCancellationTokenSource.Token);
-        while (CoyoteConnectionState.Value == WebsocketConnectionState.Connecting)
-        {
-            await Task.Delay(100, _autoConnectCancellationTokenSource.Token);
-        }
-
-        if (CoyoteConnectionState.Value == WebsocketConnectionState.Connected)
-        {
-            return;
-        }
-        logger.LogInformation("Searching for coyote devices...");
-        var bluetoothDevices = await BluetoothService.GetBluetoothDevices();
-        try
-        {
-            var deviceId = bluetoothDevices.First(device => device.Name == "47L121000").Id;
-            logger.LogInformation("Coyote V3 found");
-            config.Config.CoyoteConfig.CoyoteAddress = deviceId;
-            config.SaveDeferred();
-            await ConnectCoyote();
-        }
-        catch (InvalidOperationException)
-        {
-            logger.LogInformation("Coyote could not be found");
-        }
+        _ = OsTask.Run(AutoConnect);
     }
 
     public async Task SelectedDeviceChanged(Guid id)
@@ -139,7 +64,6 @@ public class FlowManager(
         logger.LogInformation("Selected device changed to {Id}", id);
         var deviceDetails = await openShockService.Api.GetHub(id);
 
-
         if (deviceDetails.IsT0)
         {
             var token = deviceDetails.AsT0.Value.Token;
@@ -156,7 +80,7 @@ public class FlowManager(
         }
 
 
-        deviceDetails.Switch(success => { }, found =>
+        deviceDetails.Switch( success => { }, found =>
             {
                 logger.LogError("Hub not found");
             },
@@ -229,37 +153,50 @@ public class FlowManager(
 
     public async Task DisconnectCoyote()
     {
-        if (CoyoteConnection != null) await CoyoteConnection.DisposeAsync();
-        CoyoteConnection = null;
-        _coyoteConnectionState.Value = WebsocketConnectionState.Disconnected;
-        _batteryLevel.Value = 0;
+        if (CoyoteConnection.State.Value == WebsocketConnectionState.Connected)
+        {
+            await CoyoteConnection.Disconnect();
+        }
+    }
+    
+    private async Task AutoConnect()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        while (await timer.WaitForNextTickAsync())
+        {
+            await Task.Delay(1000);
+            await PawprintService?.PawprintAutoConnect()!;
+            await CoyoteAutoConnect();
+        }
     }
 
-    public async Task ConnectCoyote()
+    private async Task CoyoteAutoConnect()
     {
-        var coyoteAddress = config.Config.CoyoteConfig.CoyoteAddress;
-        if (coyoteAddress == string.Empty)
+        if (CoyoteConnection.State.Value != WebsocketConnectionState.Disconnected || (!config.Config.CoyoteConfig.AutoConnect && !CoyoteTemporaryConnect))
         {
             return;
         }
-        if (CoyoteConnection != null)
+        
+        try
         {
-            await CoyoteConnection.DisposeAsync();
-            CoyoteConnection = null;
+            var foundCoyote = bluetoothScanner.Devices.First(device => device.Name is "47L121000");
+            try
+            {
+                await CoyoteConnection.OpenAsync(foundCoyote);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Failed to connect to Coyote {DeviceId}",
+                    foundCoyote.Uuid);
+                
+                bluetoothScanner.RemoveDevice(foundCoyote.Uuid);
+            }
         }
-
-        CoyoteConnection = new CoyoteConnection(coyoteConnectionLogger, config, coyoteAddress);
-
-        await CoyoteConnection.State.Updated.SubscribeAsync(state =>
+        catch (InvalidOperationException)
         {
-            _coyoteConnectionState.Value = state;
-            return Task.CompletedTask;
-        }).ConfigureAwait(false);
-        await CoyoteConnection.BatteryLevel.Updated.SubscribeAsync(batteryLevel =>
-        {
-            _batteryLevel.Value = batteryLevel;
-            return Task.CompletedTask;
-        }).ConfigureAwait(false);
-        _ = CoyoteConnection.OpenAsync().ConfigureAwait(false);
+        }
     }
+    
+    
 }

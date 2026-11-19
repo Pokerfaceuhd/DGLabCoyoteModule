@@ -1,6 +1,6 @@
 namespace openshock2coyote.Config.Triggers;
 
-public class NothingMode : BaseTrigger
+public class NothingMode
 {
-    public override byte TriggerMode => 0x00;
+    public const byte TriggerMode = 0x00;
 }

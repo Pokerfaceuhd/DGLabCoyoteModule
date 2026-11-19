@@ -11,10 +11,10 @@ public class TriggerMessage
     {
         var message = new byte[17];
         message[0] = Header;
-        message[1] = pawprint.color;
-        message[2] = pawprint.Trigger.TriggerMode;
+        message[1] = pawprint.Color;
+        message[2] = pawprint.TriggerMode;
 
-        switch (pawprint.Trigger.TriggerMode)
+        switch (pawprint.TriggerMode)
         {
             case 0:
                 return message;
@@ -22,9 +22,10 @@ public class TriggerMessage
                 message[3] = 0x01;
                 return message;
             default:
-                switch (pawprint.Trigger)
+                switch (pawprint.TriggerMode)
                 {
-                    case RandomReactionTrigger random:
+                    case RandomReactionTrigger.TriggerMode:
+                        var random = pawprint.RandomReactionTrigger;
                         message[3] = random.TriggerEventId;
                         message[4] = (byte)(random.RandomGreenLightDelaySeconds.Min >> 8);
                         message[5] = (byte)(random.RandomGreenLightDelaySeconds.Min & 0xFF);
@@ -38,7 +39,8 @@ public class TriggerMessage
                         message[13] = random.ParameterIncreaseOnActivation; 
                         break;
 
-                    case ExternalVoltageDetectionTrigger external:
+                    case ExternalVoltageDetectionTrigger.TriggerMode:
+                        var external = pawprint.ExternalVoltageTrigger;
                         message[3] = external.TriggerEventId;
                         message[4] = (byte)external.InternalPullUp;
                         message[5] = external.TargetVoltageRange.Min;
@@ -46,7 +48,8 @@ public class TriggerMessage
                         message[7] = external.ParameterMappingRange;
                         break;
 
-                    case PressReleaseTriggerAndAccelerationAngleTrigger button:
+                    case PressReleaseTriggerAndAccelerationAngleTrigger.TriggerMode:
+                        var button = pawprint.PressReleaseTriggerAndAccelerationAngleTrigger;
                         message[3] = button.PressReleaseTriggerEventId;
                         message[4] = PackPressReleaseSettings(button.PressReleaseMode, 
                             button.AccelerationOrAngleSubmode, 
@@ -64,6 +67,15 @@ public class TriggerMessage
                             message[11] = (byte)(button.AccelerationThreshold >> 8);
                             message[12] = (byte)(button.AccelerationThreshold & 0xFF);
                         }
+                        else if (button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Disabled)
+                        {
+                            message[10] = unchecked((byte)sbyte.MinValue);
+                            message[11] = unchecked((byte)sbyte.MaxValue);
+                            message[12] = unchecked((byte)sbyte.MinValue);
+                            message[13] = unchecked((byte)sbyte.MaxValue);
+                            message[14] = unchecked((byte)sbyte.MinValue);
+                            message[15] = unchecked((byte)sbyte.MaxValue);
+                        }
                         else
                         {
                             message[10] = unchecked((byte)button.RangeX.Min);
@@ -76,7 +88,8 @@ public class TriggerMessage
                         message[16] = button.AccelerationAngleParameterMappingRange;
                         break;
 
-                    case ProbabilityTrigger probability:
+                    case ProbabilityTrigger.TriggerMode:
+                        var probability = pawprint.ProbabilityTrigger;
                         for (var i = 0; i < probability.TriggerIds.Length; i++)
                         {
                             message[i*2+3] = probability.TriggerIds[i];

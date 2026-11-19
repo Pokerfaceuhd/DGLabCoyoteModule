@@ -2,7 +2,6 @@
 using OpenShock.Desktop.ModuleBase;
 using openshock2coyote;
 using OpenShock.Desktop.ModuleBase.Navigation;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MudBlazor;
 using OpenShock.Desktop.ModuleBase.Config;
@@ -25,7 +24,7 @@ public class Openshock2CoyoteModule : DesktopModuleBase
         new()
         {
             Name = "Coyote",
-            ComponentType = typeof(Settings),
+            ComponentType = typeof(Coyote),
             Icon = IconOneOf.FromSvg(Icons.Material.Filled.Settings)
         },
         new()
@@ -33,6 +32,12 @@ public class Openshock2CoyoteModule : DesktopModuleBase
             Name = "Pawprints",
             ComponentType = typeof(Pawprints),
             Icon = IconOneOf.FromSvg(Icons.Material.Filled.Pets)
+        },
+        new()
+        {
+            Name = "Actions",
+            ComponentType = typeof(Actions),
+            Icon = IconOneOf.FromSvg(Icons.Material.Filled.PlayCircle)
         }
     ];
 

@@ -1,13 +1,13 @@
 using System.Text.Json.Serialization;
-using openshock2coyote.Config.Actions;
 
 namespace openshock2coyote.Config.Triggers;
 
-public class PressReleaseTriggerAndAccelerationAngleTrigger : BaseTrigger
+public class PressReleaseTriggerAndAccelerationAngleTrigger
 {
-    public override byte TriggerMode => 0x05;
+    public const byte TriggerMode = 0x05;
 
-    public required byte PressReleaseTriggerEventId { get; set; } = 1;
+    [JsonIgnore]
+    public byte PressReleaseTriggerEventId = 1;
     public PressReleaseTriggerMode PressReleaseMode { get; set; } = PressReleaseTriggerMode.Press;
     
     [JsonIgnore]
@@ -19,26 +19,18 @@ public class PressReleaseTriggerAndAccelerationAngleTrigger : BaseTrigger
             : PressReleaseTriggerMode.Release;
     }
     
-    public byte ActivationDebounce { get; set; } = 0;
-    public byte DeactivationDebounce { get; set; } = 0;
-    public byte PressReleaseParameterIncreaseRateWhileActive { get; set; } = 0;
-    public byte PressReleaseParameterDecreaseOnDeactivation { get; set; } = 0;
-    public byte PressReleaseParameterDecreaseRateAfterDeactivation { get; set; } = 0;
-    public byte PressReleaseParameterIncreaseOnActivation { get; set; } = 0;
+    public byte ActivationDebounce { get; set; }
+    public byte DeactivationDebounce { get; set; }
+    public byte PressReleaseParameterIncreaseRateWhileActive { get; set; } 
+    public byte PressReleaseParameterDecreaseOnDeactivation { get; set; } = byte.MaxValue;
+    public byte PressReleaseParameterDecreaseRateAfterDeactivation { get; set; }
+    public byte PressReleaseParameterIncreaseOnActivation { get; set; }
     public List<Guid> ActionsOnPressRelease { get; set; } = [];
     
-    public AccelerationAngleSubmode AccelerationOrAngleSubmode { get; set; } = AccelerationAngleSubmode.Angle;
+    public AccelerationAngleSubmode AccelerationOrAngleSubmode { get; set; } = AccelerationAngleSubmode.Disabled;
     
     [JsonIgnore]
-    public bool IsAngleSubmode
-    {
-        get => AccelerationOrAngleSubmode == AccelerationAngleSubmode.Angle;
-        set => AccelerationOrAngleSubmode = value
-            ? AccelerationAngleSubmode.Angle
-            : AccelerationAngleSubmode.Acceleration;
-    }
-
-    public required byte AccelerationAngleTriggerEventId { get; set; } = 2;
+    public byte AccelerationAngleTriggerEventId = 2;
     public AccelerationDetectionMode AccelerationDetectionMode { get; set; } = AccelerationDetectionMode.Above;
     
     [JsonIgnore]
@@ -51,7 +43,7 @@ public class PressReleaseTriggerAndAccelerationAngleTrigger : BaseTrigger
     }
     
     public ushort AccelerationThreshold { get; set; } = 10;
-    public byte AccelerationAngleParameterMappingRange { get; set; } = 0;
+    public byte AccelerationAngleParameterMappingRange { get; set; }
     public JsonRange<sbyte> RangeX {get; set;} = new() { Min = -128, Max = 127 };
     public JsonRange<sbyte> RangeY {get; set;} = new() { Min = -128, Max = 127 };
     public JsonRange<sbyte> RangeZ {get; set;} = new() { Min = -128, Max = 127 };
@@ -61,7 +53,8 @@ public class PressReleaseTriggerAndAccelerationAngleTrigger : BaseTrigger
 public enum AccelerationAngleSubmode
 {
     Acceleration = 0,
-    Angle = 1
+    Angle = 1,
+    Disabled = 2
 }
 
 public enum PressReleaseTriggerMode

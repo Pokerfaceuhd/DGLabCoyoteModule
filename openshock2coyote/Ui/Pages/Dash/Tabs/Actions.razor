@@ -1,0 +1,164 @@
+@page "/dash/Actions"
+@using OpenShock.Desktop.ModuleBase
+                
+@using OpenShock.Desktop.ModuleBase.Api
+@using OpenShock.Desktop.ModuleBase.Config
+@using OpenShock.Desktop.ModuleBase.Models
+@using openshock2coyote.Config
+@using openshock2coyote.Config.Actions
+
+@inject ISnackbar Snackbar
+
+<MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex"
+          Style="@($"gap:16px; flex-direction:column; min-height:{(ModuleConfig.Config.PawprintsConfig.Actions.Any() ? "auto" : "50vh")};")">
+    @if (ModuleConfig.Config.PawprintsConfig.Actions.Any())
+    {
+        <MudGrid Spacing="2" Justify="Justify.FlexStart">
+            <MudItem xs="12">
+                <MudText Typo="Typo.h5">Actions</MudText>
+                <MudText Color="Color.Dark">These get triggered by pawprint events</MudText>
+            </MudItem>
+            <MudItem xs="12">
+            </MudItem>
+            <MudItem xs="4">
+                <MudButton FullWidth="true" Variant="Variant.Filled"
+                           StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                           OnClick="CreateNewAction">Create Action</MudButton>
+            </MudItem>
+            <MudItem xs="4">
+                <MudButton FullWidth="true" Disabled="ButtonDisabled" Variant="Variant.Filled"
+                           Color="Color.Primary" StartIcon="@Icons.Material.Filled.Remove"
+                           OnClick="RemoveSelectedAction">Remove Action</MudButton>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect Variant="Variant.Outlined" T="BaseAction" Label="Actions"
+                           @bind-Value="@_selectedAction">
+                    @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
+                    {
+                        <MudSelectItem Value="@action">@action.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    }
+    else
+    {
+        <MudButton Size="Size.Large" Variant="Variant.Filled" Style="margin:auto; padding:16px 32px; font-size:1.25rem;"
+                   StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   OnClick="CreateNewAction">Create Action</MudButton>
+    }
+
+    @if (_selectedAction != null)
+    {
+        <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px;">
+            <MudGrid Spacing="2" Justify="Justify.FlexStart">
+                <MudItem xs="12">
+                    <MudTextField HelperText="Action Name" @bind-Value="_selectedAction.Name"
+                                  @OnKeyDown="OnSettingsValueChange"></MudTextField>
+                </MudItem>
+
+                @switch (_selectedAction)
+                {
+                    case OpenshockAction openshock:
+                        <MudItem xs="6">
+                            <MudSlider T="byte" Size="Size.Large" Value="@openshock.IntensityRange.Min"
+                                       ValueChanged="value => { openshock.IntensityRange.Min = value; if (openshock.IntensityRange.Min > openshock.IntensityRange.Max) { openshock.IntensityRange.Max = openshock.IntensityRange.Min; } OnSettingsValueChange(); }"
+                                       Min="0" Max="100" Step="1">Minimum Intensity: @(openshock.IntensityRange.Min)%</MudSlider>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSlider T="byte" Size="Size.Large" Value="@openshock.IntensityRange.Max"
+                                       ValueChanged="value => { openshock.IntensityRange.Max = value; if (openshock.IntensityRange.Min > openshock.IntensityRange.Max) { openshock.IntensityRange.Min = openshock.IntensityRange.Max; } OnSettingsValueChange(); }"
+                                       Min="0" Max="100" Step="1">Maximum Intensity: @(openshock.IntensityRange.Max)%</MudSlider>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudStack>
+                                <MudText>Used when no Parameter Increase Settings are set/can be set</MudText>
+                                <MudSlider T="byte" Size="Size.Large" Value="@openshock.DefaultIntensity"
+                                           ValueChanged="value => { openshock.DefaultIntensity = value; OnSettingsValueChange(); }"
+                                           Min="0" Max="100" Step="1">Default Intensity: @(openshock.DefaultIntensity)%</MudSlider>
+                            </MudStack>
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudSelect Variant="Variant.Outlined" Label="Type" @bind-Value="@openshock.Type"
+                                       @bind-Value:after="OnSettingsValueChange">
+                                @foreach (ControlType item in Enum.GetValues(typeof(ControlType)))
+                                {
+                                    <MudSelectItem Value="@item">
+                                        <MudIcon Icon="@OpenshockActionToIcon(item)"></MudIcon>
+                                        @item
+                                    </MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudSelect SelectedValues="@openshock.Shockers" MultiSelectionTextFunc="@(GetMultiSelectionShockerText)" T="Guid"
+                                       Variant="Variant.Outlined" Label="Triggered Shockers" MultiSelection="true"
+                                       SelectedValuesChanged="value => { if (value != null) openshock.Shockers = [.. value]; ModuleConfig.SaveDeferred(); }">
+                                @foreach (var shocker in OpenShockService.Data.Hubs.Value
+                                              .Concat(OpenShockService.Data.SharedHubs.Value)
+                                              .SelectMany(hub => hub.Shockers))
+                                {
+                                    <MudSelectItem T="Guid" Value="@shocker.Id">@shocker.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        break;
+                }
+            </MudGrid>
+        </MudPaper>
+    }
+</MudPaper>
+
+@code {
+    [ModuleInject] private IOpenShockService OpenShockService { get; set; } = null!;
+    [ModuleInject] private IModuleConfig<Openshock2CoyoteConfig> ModuleConfig { get; set; } = null!;
+    
+    private BaseAction? _selectedAction;
+    bool ButtonDisabled => _selectedAction == null;
+    
+    private static string OpenshockActionToIcon(ControlType type) => 
+        type switch
+        {
+            ControlType.Shock => Icons.Material.Filled.Bolt,
+            ControlType.Vibrate => Icons.Material.Filled.Vibration,
+            ControlType.Sound => Icons.Material.Filled.Speaker,
+            ControlType.Stop => Icons.Material.Filled.Pause,
+            _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+        };
+    
+    private void CreateNewAction()
+    {
+        var action = new OpenshockAction() { Name = "New Action" };
+        ModuleConfig.Config.PawprintsConfig.Actions.Add(action);
+        _selectedAction = action;
+        OnSettingsValueChange();
+    }
+
+    private void RemoveSelectedAction()
+    {
+        if (_selectedAction != null)
+            ModuleConfig.Config.PawprintsConfig.Actions.Remove(_selectedAction);
+        
+
+        _selectedAction = null;
+        OnSettingsValueChange();
+    }
+    
+    private string GetMultiSelectionShockerText(IReadOnlyList<string?>? selectedValues)
+    {
+        if (selectedValues != null)
+        {
+            return string.Join(", ", selectedValues.Select(value =>
+                OpenShockService.Data.Hubs.Value
+                    .Concat(OpenShockService.Data.SharedHubs.Value).SelectMany(hub => hub.Shockers)
+                    .First(s => value != null && s.Id == Guid.Parse(value)).Name));
+        }
+        return "Select Shockers";
+    }
+    
+    private void OnSettingsValueChange()
+    {
+        ModuleConfig.SaveDeferred();
+    }
+}

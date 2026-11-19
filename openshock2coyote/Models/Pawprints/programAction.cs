@@ -4,6 +4,6 @@ namespace openshock2coyote.Models.Pawprints;
 
 public class ProgramAction(BaseAction action)
 {
-    public Boolean Active = false;
+    public bool Active = false;
     public BaseAction Action = action;
 }

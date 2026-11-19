@@ -2,7 +2,7 @@
 
 public sealed class CoyoteConfig
 {
-    public string CoyoteAddress { get; set; } = String.Empty;
+    public string CoyoteAddress { get; set; } = string.Empty;
     public bool AutoConnect { get; set; } = false;
     public int DutyCycle { get; set; } = 50;
     public bool Vibrate { get; set; } = true;

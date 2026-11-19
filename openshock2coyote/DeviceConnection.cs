@@ -22,11 +22,11 @@ public sealed class DeviceConnection : IAsyncDisposable
 {
     private readonly CancellationTokenSource _dispose;
     private CancellationTokenSource _linked;
-    private CancellationTokenSource? _currentConnectionClose = null;
+    private CancellationTokenSource? _currentConnectionClose;
     private readonly ILogger<DeviceConnection> _logger;
     private readonly Uri _backend;
     private readonly string _authToken;
-    private ClientWebSocket? _clientWebSocket = null;
+    private ClientWebSocket? _clientWebSocket;
     private DateTimeOffset _connectedAt = DateTimeOffset.MinValue;
 
     private readonly Timer _keepAliveTimer = new(TimeSpan.FromSeconds(25))

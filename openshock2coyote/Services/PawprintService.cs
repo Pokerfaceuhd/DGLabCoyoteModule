@@ -18,6 +18,8 @@ public class PawprintService
     private readonly ILogger<PawprintConnection> _pawprintConnectionLogger;
     private readonly BluetoothScanner _bluetoothScanner;
     private readonly IOpenShockService _openShockService;
+    public bool TemporaryConnect = false;
+    
     
     public Dictionary<byte, PawprintConnection> PawprintConnections { get; }
 
@@ -36,7 +38,6 @@ public class PawprintService
         _openShockService = openShockService;
         PawprintConnections = new Dictionary<byte, PawprintConnection>();
         CreatePawprintConnections();
-        OsTask.Run(AutoConnect);
         OsTask.Run(ActionLoop);
     }
     
@@ -62,15 +63,12 @@ public class PawprintService
         }
     }
     
-    private async Task OnPawprintActivation(TriggerActiveMessage message, BaseTrigger trigger)
+    private async Task OnPawprintActivation(TriggerActiveMessage message)
     {
         _logger.LogInformation("Pawprint Activation received Color: {MessageMainIndicatorColor}, EventID: {MessageEventId}, Parameter: {MessageParameterValue}", message.MainIndicatorColor, message.EventId, message.ParameterValue);
-        
-        var triggerActions = GetActionsFromMessage(message.EventId, trigger);
+        var triggerActions = GetActionsFromMessage(message.EventId, message.MainIndicatorColor);
         var actions = _config.Config.PawprintsConfig.Actions
             .Where(action => triggerActions.Contains(action.Guid));
-        
-        
         
         foreach (var action in actions)
         {
@@ -80,16 +78,16 @@ public class PawprintService
                 TriggeredByColor = message.MainIndicatorColor,
                 TriggerEventId = message.EventId,
                 ActionGuid = action.Guid,
-                ParameterIncreaseSet = GetParameterIncreaseSet(message.EventId, trigger)
+                ParameterIncreaseSet = GetParameterIncreaseSet(message.EventId, message.MainIndicatorColor)
             });
         }
     }
     
-    private async Task OnPawprintDeactivation(TriggerDeactivatedMessage message, BaseTrigger trigger)
+    private async Task OnPawprintDeactivation(TriggerDeactivatedMessage message)
     {
         _logger.LogInformation("Pawprint Deactivation received Color: {MessageMainIndicatorColor}, EventID: {MessageEventId}", message.MainIndicatorColor, message.EventId);
 
-        var triggerActions = GetActionsFromMessage(message.EventId, trigger);
+        var triggerActions = GetActionsFromMessage(message.EventId, message.MainIndicatorColor);
         var actions = _config.Config.PawprintsConfig.Actions
             .Where(action => triggerActions.Contains(action.Guid));
         
@@ -99,11 +97,11 @@ public class PawprintService
             && state.TriggerEventId == message.EventId);
     }
     
-    private async Task OnPawprintParameterChange(ParameterChangeMessage message, BaseTrigger trigger)
+    private async Task OnPawprintParameterChange(ParameterChangeMessage message)
     {
         _logger.LogInformation("Pawprint Parameter Changed received Color: {MessageMainIndicatorColor}, EventID: {MessageEventId}, Parameter: {MessageParameterValue}", message.MainIndicatorColor, message.EventId, message.ParamaterValue);
         
-        var triggerActions = GetActionsFromMessage(message.EventId, trigger);
+        var triggerActions = GetActionsFromMessage(message.EventId, message.MainIndicatorColor);
         var actions = _config.Config.PawprintsConfig.Actions
             .Where(action => triggerActions.Contains(action.Guid));
 
@@ -117,39 +115,63 @@ public class PawprintService
         
     }
     
-    private async Task OnPawprintAutomaticAngleDetection(ReportAutomaticAngleDetection message)
+    private Task OnPawprintAutomaticAngleDetection(ReportAutomaticAngleDetection message)
     {
-        var pawprint = _config.Config.PawprintsConfig.Pawprints.First(pawprint => pawprint.color == message.Color);
-        switch (pawprint.Trigger)
+        try
         {
-            case PressReleaseTriggerAndAccelerationAngleTrigger angleMode:
-                if (angleMode.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Angle)
-                {
-                    angleMode.RangeX = message.RangeX;
-                    angleMode.RangeY = message.RangeY;
-                    angleMode.RangeZ = message.RangeZ;
-                }
-                else
-                {
+            var pawprint = _config.Config.PawprintsConfig.Pawprints.First(pawprint => pawprint.Color == message.Color);
+            switch (pawprint.TriggerMode)
+            {
+                case PressReleaseTriggerAndAccelerationAngleTrigger.TriggerMode:
+                    var angleMode = pawprint.PressReleaseTriggerAndAccelerationAngleTrigger;
+                    if (angleMode.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Angle)
+                    {
+                        _logger.LogInformation("Received Automatic Angle Detection {RangeX} | {RangeY} | {RangeZ}", 
+                            message.RangeX, message.RangeY, message.RangeZ);
+                        angleMode.RangeX = message.RangeX;
+                        angleMode.RangeY = message.RangeY;
+                        angleMode.RangeZ = message.RangeZ;
+                        PawprintConnections[pawprint.Color].UpdatePawprintSettings();
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Automatic Angle Detection was returned for a Pawprint not in Angle Mode");
+                    }
+                    break;
+                default:
                     _logger.LogWarning("Automatic Angle Detection was returned for a Pawprint not in Angle Mode");
-                }
-                break;
-            default:
-                _logger.LogWarning("Automatic Angle Detection was returned for a Pawprint not in Angle Mode");
-                break;
+                    break;
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (Exception exception)
+        {
+            return Task.FromException(exception);
         }
     }
 
-    private List<Guid> GetActionsFromMessage(byte eventId, BaseTrigger trigger)
+    private List<Guid> GetActionsFromMessage(byte eventId, byte color)
     {
-        return trigger switch
+        var pawprint = _config.Config.PawprintsConfig.Pawprints[color - 1];
+        switch (pawprint.TriggerMode)
         {
-            PressReleaseTriggerAndAccelerationAngleTrigger button => eventId == 1
-                ? button.ActionsOnPressRelease
-                : button.ActionsOnAngleAcceleration,
-            ProbabilityTrigger probability => probability.ProbabilityActions[eventId - 1],
-            _ => trigger.Actions
-        };
+            case PressReleaseTriggerAndAccelerationAngleTrigger.TriggerMode:
+                var button = pawprint.PressReleaseTriggerAndAccelerationAngleTrigger;
+                return eventId == 1
+                    ? button.ActionsOnPressRelease
+                    : button.ActionsOnAngleAcceleration;
+            
+            case ProbabilityTrigger.TriggerMode:
+                return pawprint.ProbabilityTrigger.ProbabilityActions[eventId - 1];
+            
+            case ExternalVoltageDetectionTrigger.TriggerMode:
+                return pawprint.ExternalVoltageTrigger.Actions;
+            case RandomReactionTrigger.TriggerMode:
+                return pawprint.RandomReactionTrigger.Actions;
+            default:
+                return [];
+        }
     }
     
     public void StopAllActionsFromPawprint(byte color)
@@ -157,22 +179,24 @@ public class PawprintService
         _activatedActions.RemoveAll(state => state.TriggeredByColor == color);
     }
 
-    private Boolean GetParameterIncreaseSet(byte eventId, BaseTrigger trigger)
+    private bool GetParameterIncreaseSet(byte eventId, byte color)
     {
-        switch (trigger)
+        var pawprint = _config.Config.PawprintsConfig.Pawprints[color - 1];
+        switch (pawprint.TriggerMode)
         {
-            case PressReleaseTriggerAndAccelerationAngleTrigger button:
+            case PressReleaseTriggerAndAccelerationAngleTrigger.TriggerMode:
+                var button = pawprint.PressReleaseTriggerAndAccelerationAngleTrigger;
                 if (eventId == 1)
                 {
                     return button.PressReleaseParameterIncreaseOnActivation != 0 
                            || button.PressReleaseParameterIncreaseRateWhileActive != 0;
                 }
                 return button.AccelerationAngleParameterMappingRange != 0;
-            case ExternalVoltageDetectionTrigger parameterMapping:
-                return parameterMapping.ParameterMappingRange != 0;
-            case RandomReactionTrigger reaction:
-                return reaction.ParameterIncreaseOnActivation != 0 
-                       || reaction.ParameterIncreaseRateWhileActive != 0;
+            case ExternalVoltageDetectionTrigger.TriggerMode:
+                return pawprint.ExternalVoltageTrigger.ParameterMappingRange != 0;
+            case RandomReactionTrigger.TriggerMode:
+                return pawprint.RandomReactionTrigger.ParameterIncreaseOnActivation != 0 
+                       || pawprint.RandomReactionTrigger.ParameterIncreaseRateWhileActive != 0;
             default:
                 return false;
         }
@@ -219,49 +243,49 @@ public class PawprintService
             }
         }
     }
-
-    private async Task AutoConnect()
+    public async Task PawprintAutoConnect()
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
-        while (await timer.WaitForNextTickAsync())
+        if (!_config.Config.PawprintsConfig.AutoConnect && !TemporaryConnect)
+            return;
+        
+        var connectedPawprints = PawprintConnections
+            .Where(pc => pc.Value.State.Value == WebsocketConnectionState.Connected)
+            .Select(pc => pc.Value.CurrentlyConnectedDeviceId);
+
+        var enumerable = connectedPawprints as string[] ?? connectedPawprints.ToArray();
+        var bluetoothDevices = _bluetoothScanner.Devices.Where(device =>
+            device.Name is "47L120300" && !enumerable.Contains(device.Uuid)).ToArray();
+        
+        foreach (var bluetoothDevice in bluetoothDevices)
         {
-            if (!_config.Config.PawprintsConfig.AutoConnect)
-                continue;
+            var connection = PawprintConnections
+                .Select(pc => pc.Value)
+                .Where(pc => _config.Config.PawprintsConfig.Pawprints
+                    .First(p => pc.Color == p.Color).Enabled)
+                .FirstOrDefault(pc => (byte)pc!.State.Value < 2 || (byte)pc.State.Value == 4, defaultValue: null);
 
-            var connectedPawprints = PawprintConnections
-                .Where(pc => pc.Value.State.Value == WebsocketConnectionState.Connected)
-                .Select(pc => pc.Value.CurrentlyConnectedDeviceId);
-
-            var enumerable = connectedPawprints as string[] ?? connectedPawprints.ToArray();
-            var bluetoothDevices = _bluetoothScanner.Devices.Where(device =>
-                device.Name is "47L120300" && !enumerable.Contains(device.Uuid)).ToArray();
-            
-            foreach (var bluetoothDevice in bluetoothDevices)
+            if (connection is null)
             {
-                var connection = PawprintConnections
-                    .Select(pc => pc.Value)
-                    .Where(pc => _config.Config.PawprintsConfig.Pawprints
-                        .First(p => pc.Color == p.color).Enabled)
-                    .FirstOrDefault(pc => (byte)pc!.State.Value < 2 || (byte)pc.State.Value == 4, defaultValue: null);
-
-                if (connection is null)
-                {
-                    _logger.LogInformation("Found no available connections");
-                    break;
-                }
-
-                try
-                {
-                    await connection.OpenAsync(bluetoothDevice);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "Failed to connect to Pawprint {DeviceId}",
-                        bluetoothDevice.Uuid);
-                    _bluetoothScanner.RemoveDevice(bluetoothDevice.Uuid);
-                }
+                break;
             }
+            
+            try
+            {
+                await connection.OpenAsync(bluetoothDevice);
+                if (TemporaryConnect)
+                {
+                    TemporaryConnect = false;
+                }
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to connect to Pawprint {DeviceId}",
+                    bluetoothDevice.Uuid);
+            }
+            
+            _bluetoothScanner.RemoveDevice(bluetoothDevice.Uuid);
         }
     }
 }

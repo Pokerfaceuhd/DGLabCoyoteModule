@@ -1,5 +1,4 @@
 using OpenShock.Desktop.ModuleBase.Models;
-using OpenShock.Serialization.Types;
 
 namespace openshock2coyote.Config.Actions;
 
