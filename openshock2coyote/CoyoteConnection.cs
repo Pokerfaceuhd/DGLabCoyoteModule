@@ -59,6 +59,8 @@ public class CoyoteConnection
     public IAsyncUpdatable<byte> Battery => _battery;
 
     private byte[] _lastBfDirectiveCommand = new byte[7];
+    private readonly Timer? _configTimer;
+    private readonly SemaphoreSlim _configLock = new(1, 1);
 
 
     public CoyoteConnection(
@@ -283,14 +285,6 @@ public class CoyoteConnection
         {
             while (await _timer.WaitForNextTickAsync())
             {
-                var bfDirectiveCommand = BfDirectiveBuilder.Build(_config.Config.CoyoteConfig);
-                if (!bfDirectiveCommand.SequenceEqual(_lastBfDirectiveCommand))
-                {
-                    //_logger.LogInformation("Send new BFDirective {BFDirective}", Join(";",bfDirectiveCommand));
-                    await SendCommand(bfDirectiveCommand);
-                    _lastBfDirectiveCommand = bfDirectiveCommand;
-                }
-
                 while (_incomingWaveformPackets.TryDequeue(out var waveformPacket))
                     _waveformPacketQueue.Add(waveformPacket);
 
@@ -345,6 +339,24 @@ public class CoyoteConnection
     {
         _incomingWaveformPackets.Enqueue(waveformPacket);
         return Task.CompletedTask;
+    }
+    
+    public void UpdateCoyoteSettings()
+        => _configTimer?.Change(TimeSpan.FromMilliseconds(1000), Timeout.InfiniteTimeSpan);
+    
+    private async Task UpdateConfig()
+    {
+        await _configLock.WaitAsync();
+        try
+        {
+            if(_state.Value ==  WebsocketConnectionState.Connected)
+                await SendCommand(BfDirectiveBuilder.Build(_config.Config.CoyoteConfig));
+        }
+        catch (InvalidOperationException) { }
+        finally
+        {
+            _configLock.Release();
+        }
     }
 
     public void StopCommand(Channel channel)

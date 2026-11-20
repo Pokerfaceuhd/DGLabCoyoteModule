@@ -91,7 +91,19 @@ public class PawprintConnection : IAsyncDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            await DisconnectCoreAsync();
+            // Already connecting or connected to this device.
+            if (_peripheral?.Uuid == peripheral.Uuid &&
+                _state.Value is WebsocketConnectionState.Connecting or WebsocketConnectionState.Connected)
+            {
+                _logger.LogDebug(
+                    "Ignoring duplicate connection attempt for {Uuid}",
+                    peripheral.Uuid);
+
+                return;
+            }
+
+            if (_peripheral != null)
+                await DisconnectCoreAsync();
 
             _connectionCts =
                 CancellationTokenSource.CreateLinkedTokenSource(
@@ -103,17 +115,25 @@ public class PawprintConnection : IAsyncDisposable
             CurrentlyConnectedDeviceId = peripheral.Uuid;
             _state.Value = WebsocketConnectionState.Connecting;
 
-            var strength = await peripheral.ReadRssiAsync(cancellationToken);
-            if (strength == 0) { return; }
+            //var strength = await peripheral.ReadRssiAsync(cancellationToken, 500);
             
             _logger.LogInformation(
                 "Connecting to Pawprint: {DeviceName} ({DeviceId}) Strength {Rssi}dBm",
                 peripheral.Name,
                 peripheral.Uuid,
-                strength);
+                0);
 
             // PawprintService handles reconnection itself.
             _logger.LogInformation("connecting");
+            peripheral.WhenStatusChanged().Subscribe(status =>
+            {
+                _logger.LogInformation(
+                    "Bluetooth status changed: {Status} ({Uuid})",
+                    status,
+                    peripheral.Uuid
+                );
+            });
+            
             await peripheral.ConnectAsync(new ConnectionConfig(AutoConnect: false), cancellationToken);
 
             _logger.LogInformation(
@@ -152,9 +172,15 @@ public class PawprintConnection : IAsyncDisposable
                     });
             
             _logger.LogInformation("UpdatePawprintSettings");
+            
+            while (!_receivedStartupMessage &&
+                   _state.Value != WebsocketConnectionState.Disconnected)
+            {
+                await Task.Delay(500);
+            }
+            
             UpdatePawprintSettings();
         }
-        catch (InvalidOperationException) { }
         catch
         {
             await DisconnectCoreAsync();
@@ -200,16 +226,16 @@ public class PawprintConnection : IAsyncDisposable
         {
             var pawprintConfig = _config.Config.PawprintsConfig.Pawprints
                 .First(x => x.Color == Color);
-            
-            while (!_receivedStartupMessage && _state.Value != WebsocketConnectionState.Disconnected)
+
+            if (!_receivedStartupMessage ||
+                _state.Value != WebsocketConnectionState.Connected)
             {
-                await Task.Delay(1000);
-                if (_receivedStartupMessage)
-                {
-                    _logger.LogInformation("Connection should have succeeded");
-                }
+                _logger.LogWarning(
+                    "Skipping Pawprint configuration because the connection wasn't established"
+                );
+                return;
             }
-            
+
             await SendCommand(TriggerMessage.Build(pawprintConfig));
             await ConfigUpdated.Raise();
         }

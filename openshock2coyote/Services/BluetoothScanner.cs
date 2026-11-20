@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Shiny.BluetoothLE;
 
@@ -35,7 +36,13 @@ public sealed class BluetoothScanner(IBleManager bleManager,
                     return;
                 }
                 
-                logger.LogInformation("Found Device {DeviceName}", peripheral.Name);
+                logger.LogInformation(
+                    "Discovered {Uuid}, Instance: {Instance}, Status: {Status}",
+                    peripheral.Uuid,
+                    RuntimeHelpers.GetHashCode(peripheral),
+                    peripheral.Status
+                );
+
                 _devices[peripheral.Uuid] = peripheral;
             },
             ex => Console.Error.WriteLine(
