@@ -1,17 +1,14 @@
-
-using System.Reactive.Linq;
-using System.Reactive.Threading.Tasks;
 using LucHeart.WebsocketLibrary;
 using LucHeart.WebsocketLibrary.Updatables;
 using LucHeart.WebsocketLibrary.Utils;
 using Microsoft.Extensions.Logging;
 using OpenShock.Desktop.ModuleBase.Config;
 using OpenShock.MinimalEvents;
-using Shiny.BluetoothLE;
 using openshock2coyote.Config;
 using openshock2coyote.Utils;
 using openshock2coyote.Utils.PawprintMessages.ReadMessages;
 using openshock2coyote.Utils.PawprintMessages.WriteMessages;
+using SimpleSharpBLE;
 
 namespace openshock2coyote;
 
@@ -25,10 +22,7 @@ public class PawprintConnection : IAsyncDisposable
     private readonly SemaphoreSlim _connectionLock = new(1, 1);
 
     private CancellationTokenSource? _connectionCts;
-    private IPeripheral? _peripheral;
-
-    private IDisposable? _notificationSubscription;
-    private IDisposable? _disconnectSubscription;
+    private Peripheral? _peripheral;
 
     private bool _disposed;
 
@@ -81,7 +75,7 @@ public class PawprintConnection : IAsyncDisposable
             null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
-    public async Task OpenAsync(IPeripheral peripheral)
+    public async Task OpenAsync(Peripheral peripheral)
     {
         ArgumentNullException.ThrowIfNull(peripheral);
 
@@ -92,12 +86,12 @@ public class PawprintConnection : IAsyncDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             // Already connecting or connected to this device.
-            if (_peripheral?.Uuid == peripheral.Uuid &&
+            if (_peripheral?.Address == peripheral.Address &&
                 _state.Value is WebsocketConnectionState.Connecting or WebsocketConnectionState.Connected)
             {
                 _logger.LogDebug(
                     "Ignoring duplicate connection attempt for {Uuid}",
-                    peripheral.Uuid);
+                    peripheral.Address);
 
                 return;
             }
@@ -112,53 +106,32 @@ public class PawprintConnection : IAsyncDisposable
             var cancellationToken = _connectionCts.Token;
 
             _peripheral = peripheral;
-            CurrentlyConnectedDeviceId = peripheral.Uuid;
+            CurrentlyConnectedDeviceId = peripheral.Address;
             _state.Value = WebsocketConnectionState.Connecting;
-
-            var strength = await peripheral.ReadRssiAsync(cancellationToken, 500);
             
             _logger.LogInformation(
                 "Connecting to Pawprint: {DeviceName} ({DeviceId}) Strength {Rssi}dBm",
-                peripheral.Name,
-                peripheral.Uuid,
-                strength);
+                peripheral.Identifier,
+                peripheral.Address,
+                peripheral.Rssi);
             
-            await peripheral.ConnectAsync(new ConnectionConfig(AutoConnect: false), cancellationToken, TimeSpan.FromSeconds(5));
+            await peripheral.ConnectAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Connected to Pawprint: {DeviceUuid}",
-                peripheral.Uuid);
+                peripheral.Address);
             
-            _disconnectSubscription = peripheral
-                .WhenDisconnected()
-                .Subscribe(
-                    _ => OnDisconnected(peripheral),
-                    ex => _logger.LogWarning(
-                        ex,
-                        "Pawprint disconnect observer failed"));
+            peripheral.Disconnected += (_, _) => OnDisconnected(peripheral);
             
             // Verify that the Pawprint service is available.
-            var service = await peripheral.GetServiceAsync(ServiceUuid, cancelToken: cancellationToken);
+            var service = peripheral.Services.FirstOrDefault(s => s?.Uuid == ServiceUuid, null);
 
             if (service is null)
                 throw new InvalidOperationException(
                     $"Pawprint GATT service {ServiceUuid} not found.");
             
             _logger.LogInformation("notificationSubscription");
-            _notificationSubscription = peripheral
-                .NotifyCharacteristic(
-                    ServiceUuid,
-                    NotifyCharacteristicUuid)
-                .Subscribe(
-                    result => Notifications(result.Data),
-                    ex =>
-                    {
-                        _logger.LogError(
-                            ex,
-                            "Pawprint notification stream failed");
-
-                        OnDisconnected(peripheral);
-                    });
+            await peripheral.NotifyAsync(ServiceUuid, NotifyCharacteristicUuid, Notifications, cancellationToken);
             
             while (!_receivedStartupMessage &&
                    _state.Value != WebsocketConnectionState.Disconnected)
@@ -178,18 +151,19 @@ public class PawprintConnection : IAsyncDisposable
         }
     }
 
-    private void OnDisconnected(IPeripheral peripheral)
+    private void OnDisconnected(Peripheral peripheral)
     {
         if (!ReferenceEquals(_peripheral, peripheral))
             return;
 
         _logger.LogInformation(
             "Pawprint disconnected: {DeviceName}",
-            peripheral.Name);
+            peripheral.Identifier);
 
-        _notificationSubscription?.Dispose();
-        _notificationSubscription = null;
-
+        peripheral.UnsubscribeAsync(ServiceUuid, NotifyCharacteristicUuid);
+        
+        _logger.LogInformation("Unsubscribed");
+        
         CurrentlyConnectedDeviceId = "";
         _state.Value = WebsocketConnectionState.Disconnected;
         _battery.Value = 0;
@@ -268,13 +242,7 @@ public class PawprintConnection : IAsyncDisposable
         var cancellationToken = _connectionCts?.Token
             ?? throw new InvalidOperationException("No active connection.");
 
-        await peripheral
-            .WriteCharacteristic(
-                ServiceUuid,
-                WriteCharacteristicUuid,
-                command,
-                withResponse: false)
-            .ToTask(cancellationToken);
+        await peripheral.WriteCommandAsync(ServiceUuid, WriteCharacteristicUuid, command, cancellationToken);
     }
 
     private void Notifications(byte[]? message)
@@ -367,11 +335,7 @@ public class PawprintConnection : IAsyncDisposable
             Timeout.InfiniteTimeSpan);
 
         // Dispose subscriptions.
-        _notificationSubscription?.Dispose();
-        _notificationSubscription = null;
-
-        _disconnectSubscription?.Dispose();
-        _disconnectSubscription = null;
+        peripheral?.UnsubscribeAsync(ServiceUuid, NotifyCharacteristicUuid);
 
         // Cancel and dispose the connection token.
         if (connectionCts != null)
@@ -392,27 +356,8 @@ public class PawprintConnection : IAsyncDisposable
 
         if (peripheral == null)
             return;
-
-        // Actually disconnect from the device.
-        try
-        {
-            await peripheral.DisconnectAsync(
-                timeout: TimeSpan.FromSeconds(5));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error disconnecting Pawprint");
-
-            // Fallback: cancel any remaining connection request.
-            try
-            {
-                peripheral.CancelConnection();
-            }
-            catch (Exception cancelEx)
-            {
-                _logger.LogWarning(cancelEx, "Error cancelling peripheral connection");
-            }
-        }
+        
+        await peripheral.DisconnectAsync();
     }
 
     public async ValueTask DisposeAsync()
