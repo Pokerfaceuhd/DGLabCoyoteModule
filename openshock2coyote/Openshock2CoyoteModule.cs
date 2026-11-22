@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using OpenShock.Desktop.ModuleBase;
 using openshock2coyote;
 using OpenShock.Desktop.ModuleBase.Navigation;
@@ -74,16 +75,6 @@ public class Openshock2CoyoteModule : DesktopModuleBase
         services.AddSingleton(ModuleInstanceManager.OpenShock);
 
         services.AddSingleton<FlowManager>();
-
-        if (OperatingSystem.IsLinux())
-        {
-            services.AddLinuxBluetoothLE();
-        }
-        else
-        {
-            services.AddBluetoothLE();
-        }
-        
         services.AddSingleton<BluetoothScanner>();
         
         return services.BuildServiceProvider();

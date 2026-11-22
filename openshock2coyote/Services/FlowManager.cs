@@ -8,7 +8,6 @@ using OpenShock.Serialization.Types;
 using openshock2coyote.Config;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
-using Shiny.BluetoothLE;
 
 namespace openshock2coyote.Services;
 
@@ -20,11 +19,8 @@ public class FlowManager(
     ILogger<PawprintService> pawprintServiceLogger,
     ILogger<PawprintConnection> pawprintConnectionLogger,
     BluetoothScanner bluetoothScanner,
-    IOpenShockService _openShockService, 
-    IBleManager bleManager) : IAsyncDisposable
+    IOpenShockService _openShockService) : IAsyncDisposable
 {
-    private const int MaxAutoConnectMult = 60;
-
     public Guid HubId { get; private set; } = Guid.Empty;
     private readonly CancellationTokenSource _shutdown = new();
     private static readonly TimeSpan MaxHubRetryDelay = TimeSpan.FromSeconds(60);
@@ -37,7 +33,6 @@ public class FlowManager(
     public CoyoteConnection CoyoteConnection { get; private set; } = new(coyoteConnectionLogger, _config);
 
     public bool CoyoteTemporaryConnect;
-    private readonly Dictionary<string, int> _knownGoodCoyoteAddresses = [];
     
     private bool _disposed;
 
@@ -51,7 +46,7 @@ public class FlowManager(
             _ = OsTask.Run(() => StartHubConnectionWithRetry(hubId));
         }
         
-        PawprintService = new PawprintService(_config, pawprintServiceLogger, pawprintConnectionLogger, bluetoothScanner, bleManager, _openShockService);
+        PawprintService = new PawprintService(_config, pawprintServiceLogger, pawprintConnectionLogger, bluetoothScanner, _openShockService);
         
         _ = OsTask.Run(AutoConnect);
     }
@@ -220,48 +215,20 @@ public class FlowManager(
         
         try
         {
-            var foundCoyote = bluetoothScanner.Devices.First(device => device.Name is "47L121000");
+            var foundCoyote = bluetoothScanner.Devices.First(device => device.Identifier is "47L121000");
             try
             {
                 await CoyoteConnection.OpenAsync(foundCoyote);
                 CoyoteTemporaryConnect = false;
-                _knownGoodCoyoteAddresses[foundCoyote.Uuid] = 0;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
                     "Failed to connect to Coyote {DeviceId}",
-                    foundCoyote.Uuid);
-            }
-            bluetoothScanner.RemoveDevice(foundCoyote.Uuid);
-        }
-        catch (InvalidOperationException)
-        {
-            if (!_knownGoodCoyoteAddresses.Any()) return;
-            _logger.LogInformation("Scan contained no Coyote, falling back to known Devices");
-            var knownGood = _knownGoodCoyoteAddresses
-                .ElementAt(Random.Shared.Next(0, _knownGoodCoyoteAddresses.Count));
-            var knownCoyote = bleManager.GetKnownPeripheral(knownGood.Key);
-            if (knownCoyote == null) return;
-            try
-            {
-                await CoyoteConnection.OpenAsync(knownCoyote);
-                _knownGoodCoyoteAddresses[knownGood.Key] = 0;
-                CoyoteTemporaryConnect = false;
-            }
-            catch (Exception ex)
-            {
-                _knownGoodCoyoteAddresses[knownGood.Key] += 1;
-                if (_knownGoodCoyoteAddresses[knownGood.Key] >= 5)
-                {
-                    _knownGoodCoyoteAddresses.Remove(knownGood.Key);
-                }
-                
-                _logger.LogWarning(ex,
-                    "Failed to connect to Coyote {DeviceId}",
-                    knownCoyote.Uuid);
+                    foundCoyote.Address);
             }
         }
+        catch (InvalidOperationException) { }
     }
     
     public async ValueTask DisposeAsync()

@@ -1,67 +1,110 @@
 using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
+using System.Security.Principal;
 using Microsoft.Extensions.Logging;
-using Shiny.BluetoothLE;
+using SimpleSharpBLE;
 
 namespace openshock2coyote.Services;
 
-public sealed class BluetoothScanner(IBleManager bleManager,
-    ILogger<BluetoothScanner> logger) : IDisposable
+public sealed class BluetoothScanner(ILogger<BluetoothScanner> logger) : IDisposable
 {
-    private readonly ConcurrentDictionary<string, IPeripheral> _devices = new();
+    private readonly ConcurrentDictionary<string, Peripheral> _devices = new();
+    
+    private Adapter adapter;
 
-    private IDisposable? _scanSubscription;
-
-    public IReadOnlyCollection<IPeripheral> Devices =>
+    public IReadOnlyCollection<Peripheral> Devices =>
         _devices.Values.ToArray();
 
-    public async Task StartAsync()
+public Task StartAsync()
     {
-        if (_scanSubscription != null)
-            return;
+        if (adapter is not null)
+            return Task.CompletedTask;
 
-        var access = await bleManager.RequestAccessAsync();
+        var adapters = Adapter.GetAdapters();
 
-        if (access != AccessState.Available)
-            throw new InvalidOperationException(
-                $"Bluetooth is unavailable: {access}");
+        if (adapters.Count == 0)
+        {
+            logger.LogWarning("No Bluetooth adapters found");
+            return Task.CompletedTask;
+        }
 
-        _scanSubscription = bleManager.Scan().Subscribe(
-            result =>
+        // Keep the first adapter alive.
+        adapter = adapters[0];
+
+        // Dispose adapters we aren't using.
+        for (var i = 1; i < adapters.Count; i++)
+            adapters[i].Dispose();
+
+        logger.LogInformation(
+            "Using Bluetooth adapter: {Identifier} [{Address}], Powered: {Powered}",
+            adapter.Identifier,
+            adapter.Address,
+            adapter.IsPowered
+        );
+
+        adapter.ScanFound += (_, e) =>
+        {
+            var peripheral = e.Peripheral;
+
+            if (!peripheral.Identifier.StartsWith("47L"))
             {
-                var peripheral = result.Peripheral;
+                peripheral.Dispose();
+                return;
+            }
+            
+            logger.LogInformation(
+                "Found: {Identifier} [{Address}] {Rssi} dBm",
+                peripheral.Identifier,
+                peripheral.Address,
+                peripheral.Rssi
+            );
+            
+            _devices[peripheral.Address] = peripheral;
+        };
 
-                if (peripheral.Name == null || !peripheral.Name.StartsWith("47L"))
-                {
-                    return;
-                }
-                
-                /*logger.LogInformation(
-                    "Discovered {Uuid}, Instance: {Instance}, Status: {Status}",
-                    peripheral.Uuid,
-                    RuntimeHelpers.GetHashCode(peripheral),
-                    peripheral.Status
-                );*/
+        try
+        {
+            logger.LogInformation("Starting Bluetooth scan");
 
-                _devices[peripheral.Uuid] = peripheral;
-            },
-            ex => Console.Error.WriteLine(
-                $"Pawprint scanning failed: {ex}"));
+            adapter.ScanStart();
+
+            logger.LogInformation(
+                "Scan active: {Active}",
+                adapter.ScanIsActive
+            );
+        }
+        catch
+        {
+            adapter.Dispose();
+            adapter = null;
+            throw;
+        }
+
+        return Task.CompletedTask;
     }
 
-    public void RemoveDevice(string uuid)
+    public Task StopAsync()
     {
-        _devices.Remove(uuid, out _);
-    }
-    
-    public void Stop()
-    {
-        _scanSubscription?.Dispose();
-        _scanSubscription = null;
+        if (adapter is null)
+            return Task.CompletedTask;
+
+        try
+        {
+            if (adapter.ScanIsActive)
+                adapter.ScanStop();
+        }
+        finally
+        {
+            adapter.Dispose();
+            adapter = null;
+        }
+
+        logger.LogInformation("Bluetooth scan stopped");
+
+        return Task.CompletedTask;
     }
 
     public void Dispose()
     {
-        Stop();
+        StopAsync();
     }
 }

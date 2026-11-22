@@ -9,8 +9,7 @@ using OpenShock.MinimalEvents;
 using openshock2coyote.Config;
 using openshock2coyote.Models.Coyote;
 using openshock2coyote.Utils;
-using Shiny.BluetoothLE;
-using static System.String;
+using SimpleSharpBLE;
 using Channel = openshock2coyote.Models.Coyote.Channel;
 
 namespace openshock2coyote;
@@ -20,7 +19,7 @@ public class CoyoteConnection : IAsyncDisposable
     private readonly ILogger<CoyoteConnection> _logger;
     private IModuleConfig<Openshock2CoyoteConfig> _config;
     
-    private IPeripheral? _peripheral;
+    private Peripheral? _peripheral;
     private readonly string _deviceId;
     
     private readonly CancellationTokenSource _disposeCts = new();
@@ -74,7 +73,7 @@ public class CoyoteConnection : IAsyncDisposable
             null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
     
-    public async Task OpenAsync(IPeripheral peripheral)
+    public async Task OpenAsync(Peripheral peripheral)
     {
         _state.Value = WebsocketConnectionState.Connecting;
         ArgumentNullException.ThrowIfNull(peripheral);
@@ -84,12 +83,12 @@ public class CoyoteConnection : IAsyncDisposable
         try
         {
             // Already connecting or connected to this device.
-            if (_peripheral?.Uuid == peripheral.Uuid &&
+            if (_peripheral?.Address == peripheral.Address &&
                 _state.Value is WebsocketConnectionState.Connecting or WebsocketConnectionState.Connected)
             {
                 _logger.LogDebug(
                     "Ignoring duplicate connection attempt for {Uuid}",
-                    peripheral.Uuid);
+                    peripheral.Address);
 
                 return;
             }
@@ -108,45 +107,26 @@ public class CoyoteConnection : IAsyncDisposable
 
             _logger.LogInformation(
                 "Connecting to Coyote: {DeviceName} ({DeviceId})",
-                peripheral.Name,
-                peripheral.Uuid);
+                peripheral.Identifier,
+                peripheral.Address);
             
-            await peripheral.ConnectAsync(new ConnectionConfig(AutoConnect: false), cancellationToken, TimeSpan.FromSeconds(5));
+            await peripheral.ConnectAsync(cancellationToken);
             
             _logger.LogInformation(
                 "Connect to Coyote: {DeviceName}",
-                peripheral.Name);
+                peripheral.Identifier);
             
-            _disconnectSubscription = peripheral
-                .WhenDisconnected()
-                .Subscribe(
-                    _ => OnDisconnected(peripheral),
-                    ex => _logger.LogWarning(
-                        ex,
-                        "Coyote disconnect observer failed"));
+            peripheral.Disconnected += (_, _) => OnDisconnected(peripheral);
             
             await FindService(peripheral, BatteryServiceId, cancellationToken);
             await FindService(peripheral, WaveformServiceId, cancellationToken);
             
-            _batteryNotifySubscription = peripheral
-                .NotifyCharacteristic(
-                    BatteryServiceId,
-                    BatteryCharacteristicId)
-                .Subscribe(
-                    result => UpdateBattery(result.Data),
-                    ex =>
-                    {
-                        _logger.LogError(
-                            ex,
-                            "Pawprint notification stream failed");
-
-                        OnDisconnected(peripheral);
-                    });
+            await peripheral.NotifyAsync(BatteryServiceId, BatteryCharacteristicId, value => _battery.Value = value[0], cancellationToken);
             
             _state.Value = WebsocketConnectionState.Connected;
             _ = OsTask.Run(WriteLoop, cancellationToken);
             UpdateCoyoteSettings();
-            _battery.Value = (await peripheral.ReadCharacteristicAsync(BatteryServiceId, BatteryCharacteristicId, cancelToken: cancellationToken)).Data![0];
+            _battery.Value = (await peripheral.ReadAsync(BatteryServiceId, BatteryCharacteristicId, cancellationToken))[0];
         }
         catch
         {
@@ -159,23 +139,23 @@ public class CoyoteConnection : IAsyncDisposable
         }
     }
 
-    private static async Task FindService(IPeripheral peripheral, string serviceId, CancellationToken cancellationToken)
+    private static async Task FindService(Peripheral peripheral, string serviceId, CancellationToken cancellationToken)
     {
-        var service = await peripheral.GetServiceAsync(serviceId, cancelToken: cancellationToken);
+        var service = peripheral.Services.FirstOrDefault(s => s?.Uuid == serviceId, null);
 
         if (service is null)
             throw new InvalidOperationException(
                 $"Coyote GATT service {serviceId} not found.");
     }
     
-    private void OnDisconnected(IPeripheral peripheral)
+    private void OnDisconnected(Peripheral peripheral)
     {
         if (!ReferenceEquals(_peripheral, peripheral))
             return;
 
         _logger.LogInformation(
             "Coyote disconnected: {DeviceName}",
-            peripheral.Name);
+            peripheral.Identifier);
 
         _batteryNotifySubscription?.Dispose();
         _batteryNotifySubscription = null;
@@ -237,27 +217,8 @@ public class CoyoteConnection : IAsyncDisposable
 
         if (peripheral == null)
             return;
-
-        // Actually disconnect from the device.
-        try
-        {
-            await peripheral.DisconnectAsync(
-                timeout: TimeSpan.FromSeconds(5));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error disconnecting Pawprint");
-
-            // Fallback: cancel any remaining connection request.
-            try
-            {
-                peripheral.CancelConnection();
-            }
-            catch (Exception cancelEx)
-            {
-                _logger.LogWarning(cancelEx, "Error cancelling peripheral connection");
-            }
-        }
+        
+        await peripheral.DisconnectAsync();
     }
     
     private void UpdateBattery(byte[]? batteryValue)
@@ -372,13 +333,9 @@ public class CoyoteConnection : IAsyncDisposable
         var cancellationToken = _connectionCts?.Token
                                 ?? throw new InvalidOperationException("No active connection.");
 
-        await peripheral
-            .WriteCharacteristic(
-                WaveformServiceId,
-                WaveformWriteCharacteristicId,
-                command,
-                withResponse: false)
-            .ToTask(cancellationToken);
+        await peripheral.WriteCommandAsync(
+            WaveformServiceId, WaveformWriteCharacteristicId, 
+            command, cancellationToken);
     }
 
     public async Task Disconnect()

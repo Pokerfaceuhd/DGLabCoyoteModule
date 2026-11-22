@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using LucHeart.WebsocketLibrary;
 using Microsoft.Extensions.Logging;
 using OpenShock.Desktop.ModuleBase.Api;
@@ -7,38 +8,34 @@ using openshock2coyote.Config.Actions;
 using openshock2coyote.Config.Triggers;
 using openshock2coyote.Utils;
 using openshock2coyote.Utils.PawprintMessages.ReadMessages;
-using Shiny.BluetoothLE;
 
 namespace openshock2coyote.Services;
 
 public class PawprintService
 {
-    private readonly List<ActionState> _activatedActions = [];
     private readonly IModuleConfig<Openshock2CoyoteConfig> _config;
     private readonly ILogger<PawprintService> _logger;
     private readonly ILogger<PawprintConnection> _pawprintConnectionLogger;
     private readonly BluetoothScanner _bluetoothScanner;
     private readonly IOpenShockService _openShockService;
-    private readonly IBleManager _bleManager;
     public bool TemporaryConnect;
-    private Dictionary<string, int> _knownGoodPawprintAddresses = [];
     
     public Dictionary<byte, PawprintConnection> PawprintConnections { get; }
-
+    
+    private readonly object _activatedActionsLock = new();
+    private readonly List<ActionState> _activatedActions = [];
 
     public PawprintService(
         IModuleConfig<Openshock2CoyoteConfig> config,
         ILogger<PawprintService> logger,
         ILogger<PawprintConnection> pawprintConnectionLogger,
         BluetoothScanner bluetoothScanner,
-        IBleManager bleManager,
         IOpenShockService openShockService)
     {
         _config = config;
         _logger = logger;
         _pawprintConnectionLogger = pawprintConnectionLogger;
         _bluetoothScanner = bluetoothScanner;
-        _bleManager = bleManager;
         _openShockService = openShockService;
         PawprintConnections = new Dictionary<byte, PawprintConnection>();
         CreatePawprintConnections();
@@ -76,14 +73,15 @@ public class PawprintService
         
         foreach (var action in actions)
         {
-            _activatedActions.Add(new ActionState
-            {
-                ParameterValue = message.ParameterValue,
-                TriggeredByColor = message.MainIndicatorColor,
-                TriggerEventId = message.EventId,
-                ActionGuid = action.Guid,
-                ParameterIncreaseSet = GetParameterIncreaseSet(message.EventId, message.MainIndicatorColor)
-            });
+            lock (_activatedActionsLock)
+                _activatedActions.Add(new ActionState
+                {
+                    ParameterValue = message.ParameterValue,
+                    TriggeredByColor = message.MainIndicatorColor,
+                    TriggerEventId = message.EventId,
+                    ActionGuid = action.Guid,
+                    ParameterIncreaseSet = GetParameterIncreaseSet(message.EventId, message.MainIndicatorColor)
+                });
         }
     }
     
@@ -95,10 +93,11 @@ public class PawprintService
         var actions = _config.Config.PawprintsConfig.Actions
             .Where(action => triggerActions.Contains(action.Guid));
         
-        _activatedActions.RemoveAll(state => 
-            actions.Select(a => a.Guid).Contains(state.ActionGuid) 
-            && state.TriggeredByColor == message.MainIndicatorColor 
-            && state.TriggerEventId == message.EventId);
+        lock (_activatedActionsLock)
+            _activatedActions.RemoveAll(state => 
+                actions.Select(a => a.Guid).Contains(state.ActionGuid) 
+                && state.TriggeredByColor == message.MainIndicatorColor 
+                && state.TriggerEventId == message.EventId);
     }
     
     private async Task OnPawprintParameterChange(ParameterChangeMessage message)
@@ -108,14 +107,15 @@ public class PawprintService
         var triggerActions = GetActionsFromMessage(message.EventId, message.MainIndicatorColor);
         var actions = _config.Config.PawprintsConfig.Actions
             .Where(action => triggerActions.Contains(action.Guid));
-
-        foreach (var action in _activatedActions.Where(state =>
-                     actions.Select(a => a.Guid).Contains(state.ActionGuid)
-                     && state.TriggeredByColor == message.MainIndicatorColor
-                     && state.TriggerEventId == message.EventId))
-        {
-            action.ParameterValue = message.ParamaterValue;
-        }
+        
+        lock (_activatedActionsLock)
+            foreach (var action in _activatedActions.Where(state =>
+                         actions.Select(a => a.Guid).Contains(state.ActionGuid)
+                         && state.TriggeredByColor == message.MainIndicatorColor
+                         && state.TriggerEventId == message.EventId))
+            {
+                action.ParameterValue = message.ParamaterValue;
+            }
         
     }
     
@@ -180,7 +180,8 @@ public class PawprintService
     
     public void StopAllActionsFromPawprint(byte color)
     {
-        _activatedActions.RemoveAll(state => state.TriggeredByColor == color);
+        lock (_activatedActionsLock)
+            _activatedActions.RemoveAll(state => state.TriggeredByColor == color);
     }
 
     private bool GetParameterIncreaseSet(byte eventId, byte color)
@@ -211,41 +212,43 @@ public class PawprintService
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
         while (await timer.WaitForNextTickAsync())
         {
-            var actions = _activatedActions.Select(a => _config.Config.PawprintsConfig.Actions
-                .First(action => action.Guid == a.ActionGuid).Name).ToArray();
-            if (actions.Count() != 0)
+            try
             {
-                _logger.LogInformation("Activated Actions: {ActivatedActions}", string.Join(", ", actions));
-            }
+                lock (_activatedActionsLock)
+                    foreach (var activatedAction in _activatedActions)
+                    {
+                        var storedAction = _config.Config.PawprintsConfig.Actions
+                            .First(action => action.Guid == activatedAction.ActionGuid);
 
-            foreach (var activatedAction in _activatedActions)
-            {
-                var storedAction = _config.Config.PawprintsConfig.Actions
-                    .First(action => action.Guid == activatedAction.ActionGuid);
+                        switch (storedAction)
+                        {
+                            case OpenshockAction openshockAction:
+                                byte intensity;
+                                if (activatedAction.ParameterIncreaseSet)
+                                {
+                                    intensity = (byte)Math.Round(openshockAction.IntensityRange.Min
+                                                                 + (activatedAction.ParameterValue / 255.0)
+                                                                 * (openshockAction.IntensityRange.Max -
+                                                                    openshockAction.IntensityRange.Min));
+                                }
+                                else
+                                {
+                                    intensity = openshockAction.DefaultIntensity;
+                                }
 
-                switch (storedAction)
+                                _logger.LogInformation("Activated Shocker {Intensity} {Type} {Shockers}", intensity,
+                                    openshockAction.Type, string.Join(", ", openshockAction.Shockers));
+                                _openShockService.Control.LiveControl(openshockAction.Shockers, intensity,
+                                    openshockAction.Type);
+                                break;
+                        }
+                    }
+                }
+                catch (Exception ex)
                 {
-                    case OpenshockAction openshockAction:
-                        byte intensity;
-                        if (activatedAction.ParameterIncreaseSet)
-                        {
-                            intensity = (byte)Math.Round(openshockAction.IntensityRange.Min
-                                                         + (activatedAction.ParameterValue / 255.0)
-                                                         * (openshockAction.IntensityRange.Max -
-                                                            openshockAction.IntensityRange.Min));
-                        }
-                        else
-                        {
-                            intensity = openshockAction.DefaultIntensity;
-                        }
-
-                        _logger.LogInformation("Activated Shocker {Intensity} {Type} {Shockers}", intensity, 
-                            openshockAction.Type, string.Join(", ", openshockAction.Shockers));
-                        _openShockService.Control.LiveControl(openshockAction.Shockers, intensity, openshockAction.Type);
-                        break;
+                    _logger.LogWarning("Error in Actionloop {EX}", ex);
                 }
             }
-        }
     }
     public async Task PawprintAutoConnect()
     {
@@ -257,23 +260,7 @@ public class PawprintService
             .Select(pc => pc.Value.CurrentlyConnectedDeviceId).ToArray();
         
         var bluetoothDevices = _bluetoothScanner.Devices.Where(device =>
-            device.Name is "47L120300" && !connectedPawprints.Contains(device.Uuid)).ToArray();
-
-        if (bluetoothDevices.Length == 0)
-        {
-            
-            bluetoothDevices =
-            [
-                .. _knownGoodPawprintAddresses.Keys
-                    .Where(device => !connectedPawprints.Contains(device))
-                    .Select(address => _bleManager.GetKnownPeripheral(address))
-                    .OfType<IPeripheral>()
-            ];
-            if (bluetoothDevices.Length != 0)
-            {
-                _logger.LogInformation("No devices found in Scan, falling back to known Devices");
-            }
-        }
+            device.Identifier is "47L120300" && !connectedPawprints.Contains(device.Address)).ToArray();
         
         foreach (var bluetoothDevice in bluetoothDevices)
         {
@@ -291,25 +278,15 @@ public class PawprintService
             try
             {
                 await connection.OpenAsync(bluetoothDevice);
-                _knownGoodPawprintAddresses[bluetoothDevice.Uuid] = 0;
                 TemporaryConnect = false;
                 break;
             }
             catch (Exception ex)
             {
-                if (_knownGoodPawprintAddresses.ContainsKey(bluetoothDevice.Uuid))
-                {
-                    _knownGoodPawprintAddresses[bluetoothDevice.Uuid] += 1;
-                    if (_knownGoodPawprintAddresses[bluetoothDevice.Uuid] >= 5)
-                    {
-                        _knownGoodPawprintAddresses.Remove(bluetoothDevice.Uuid);
-                    }
-                }
                 _logger.LogWarning(ex,
                     "Failed to connect to Pawprint {DeviceId}",
-                    bluetoothDevice.Uuid);
+                    bluetoothDevice.Address);
             }
-            _bluetoothScanner.RemoveDevice(bluetoothDevice.Uuid);
         }
     }
 }
