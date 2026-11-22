@@ -39,8 +39,8 @@
                     </MudSelect>
                 </span>
                 <div>
-                    <MudIcon Color="GetConnectionStateColor(FlowManager.DeviceConnectionState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
-                    @FlowManager.DeviceConnectionState.Value
+                    <MudIcon Color="GetConnectionStateColor(FlowManager.SimulatedHubState.Value)" Icon="@Icons.Material.Filled.CheckCircle"></MudIcon>
+                    @FlowManager.SimulatedHubState.Value
                 </div>
 
                 <MudGrid Spacing="2">
@@ -95,9 +95,9 @@
                                        { 
                                            ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max = ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min;
                                        } 
-                                       BFDirectiveChanged();
+                                       BfDirectiveChanged();
                                    }"  
-                                   Min="0" Max="2" Step="0.01f">Min Shock Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min * 100))%</MudSlider>
+                                   Min="0" Max="2" Step="0.01f">Min Shock: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min * 100))%</MudSlider>
                     </MudItem>
                     <MudItem xs="6">
                         <MudSlider T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max" 
@@ -106,9 +106,9 @@
                                        { 
                                            ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Min = ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max;
                                        } 
-                                       BFDirectiveChanged();
+                                       BfDirectiveChanged();
                                    }"  
-                                   Min="0" Max="2" Step="0.01f">Max Shock Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max * 100))%</MudSlider>
+                                   Min="0" Max="2" Step="0.01f">Max Shock: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.ShockMultiplierRange.Max * 100))%</MudSlider>
                     </MudItem>
                     
                     <MudDivider/>
@@ -122,9 +122,9 @@
                                        { 
                                            ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max = ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min;
                                        } 
-                                       BFDirectiveChanged(); 
+                                       BfDirectiveChanged(); 
                                    }" 
-                                   Min="0" Max="0.5f" Step="0.01f">Min Vibration Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min* 100))%</MudSlider>
+                                   Min="0" Max="0.5f" Step="0.01f">Min Vibration: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min * 100))%</MudSlider>
                     </MudItem>
                     <MudItem xs="4">
                         <MudSlider Disabled="!ModuleConfig.Config.CoyoteConfig.Vibrate" T="float" Size="Size.Large" Value="@ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max" 
@@ -133,9 +133,9 @@
                                        { 
                                            ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Min = ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max;
                                        }  
-                                       BFDirectiveChanged(); 
+                                       BfDirectiveChanged(); 
                                    }" 
-                                   Min="0" Max="0.5f" Step="0.01f">Max Vibration Range: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max * 100))%</MudSlider>
+                                   Min="0" Max="0.5f" Step="0.01f">Max Vibration: @(MathF.Round(ModuleConfig.Config.CoyoteConfig.VibrateMultiplierRange.Max * 100))%</MudSlider>
                     </MudItem>
                     <MudItem Style="align-content: center" xs="2">
                         <MudButton Disabled="!ModuleConfig.Config.CoyoteConfig.Vibrate"
@@ -200,7 +200,7 @@
         _batteryLevel = FlowManager.CoyoteConnection.Battery.Value;
         _disableButton = FlowManager.CoyoteConnection.State.Value is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
         
-        _flowUpdatedSubscription = await FlowManager.DeviceConnectionState.Updated.SubscribeAsync(state => InvokeAsync(StateHasChanged));
+        _flowUpdatedSubscription = await FlowManager.SimulatedHubState.Updated.SubscribeAsync(state => InvokeAsync(StateHasChanged));
         _flowUpdatedSubscriptionCoyote = await FlowManager.CoyoteConnection.State.Updated.SubscribeAsync(state =>
         {
             _disableButton = state is WebsocketConnectionState.Connected or WebsocketConnectionState.Connecting;
@@ -247,7 +247,7 @@
         await FlowManager.SelectedDeviceChanged(_selectedDevice);
     }
 
-    private void BFDirectiveChanged()
+    private void BfDirectiveChanged()
     {
         FlowManager.CoyoteConnection.UpdateCoyoteSettings();
         ModuleConfig.SaveDeferred();

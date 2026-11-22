@@ -8,20 +8,28 @@
 
 @page "/dash/pawprints"
 
+
+<MudStack>
+    <MudText Typo="Typo.h5">Pawprints</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Manage your Pawprints Triggers here</MudText>
+</MudStack>
 <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px; flex-direction: column">
     <MudStack>
-        <MudText Typo="Typo.h5">Pawprints</MudText>
-        <MudText Color="Color.Dark">Manage your Pawprints Triggers here</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">Connections will always be to the first enabled Pawprint color</MudText>
+        @if (!ModuleConfig.Config.PawprintsConfig.Pawprints.Any(pawprint => pawprint.Enabled))
+        {
+            <MudText Typo="Typo.body2" Color="Color.Warning" Class="mud-text-secondary">! You currently have no Pawprint colors enabled, select one and enable it</MudText>
+        }
     </MudStack>
     <MudStack Row="true">
-        <MudButton Variant="Variant.Outlined" Disabled="@(ModuleConfig.Config.PawprintsConfig.AutoConnect)"
-                   OnClick="_ => { FlowManager.PawprintService.TemporaryConnect = !FlowManager.PawprintService.TemporaryConnect; }">Connect To One</MudButton>
         <MudButtonGroup OverrideStyles="false">
-            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@(ModuleConfig.Config.PawprintsConfig.AutoConnect)"
-                       OnClick="_ => { ModuleConfig.Config.PawprintsConfig.AutoConnect = true; ModuleConfig.SaveDeferred(); }">Autoconnect Disabled</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@(!ModuleConfig.Config.PawprintsConfig.AutoConnect)"
                        OnClick="_ => { ModuleConfig.Config.PawprintsConfig.AutoConnect = false; ModuleConfig.SaveDeferred(); }">Autoconnect Enabled</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@(ModuleConfig.Config.PawprintsConfig.AutoConnect)"
+                       OnClick="_ => { ModuleConfig.Config.PawprintsConfig.AutoConnect = true; ModuleConfig.SaveDeferred(); }">Autoconnect Disabled</MudButton>
         </MudButtonGroup>
+        <MudButton Variant="Variant.Outlined" Disabled="@(ModuleConfig.Config.PawprintsConfig.AutoConnect)"
+                   OnClick="_ => { FlowManager.PawprintService.TemporaryConnect = !FlowManager.PawprintService.TemporaryConnect; }">Connect To One</MudButton>
     </MudStack>
     <MudStack Row="true">
         @if (FlowManager.PawprintService.TemporaryConnect)
@@ -78,277 +86,321 @@
          && _pawprintConnection != null
          && _selectedPawprint.Color == _pawprintConnection.Color)
     {
-        <MudStack Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Row="true">
-            <MudButtonGroup Color="Color.Primary" OverrideStyles="false">
-                <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@(_selectedPawprint.Enabled)"
-                           OnClick="_ => { _selectedPawprint.Enabled = true; ModuleConfig.SaveDeferred(); }">Enable</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@(!_selectedPawprint.Enabled)"
-                           OnClick="_ => { _selectedPawprint.Enabled = false; _pawprintConnection.Disconnect(); ModuleConfig.SaveDeferred(); }">Disable</MudButton>
-            </MudButtonGroup>
-            <MudSelect Value="_selectedPawprint.TriggerMode" T="byte"
-                       Variant="Variant.Outlined" Label="Trigger Type"
-                       ValueChanged="value => { OnPawprintTriggerModeChange(value, _selectedPawprint); }">
-                @foreach (var type in _triggerTypes)
+        <MudStack Justify="Justify.FlexStart" AlignItems="AlignItems.Center" Row="true">
+            <MudStack>
+                @if (!_selectedPawprint.Enabled)
                 {
-                    <MudSelectItem Value="@type.Key">
-                        <MudIcon Icon="@GetTriggerIcon(type.Key)"></MudIcon>
-                        @type.Value
-                    </MudSelectItem>
+                    <MudText Typo="Typo.body2" Color="Color.Warning" Class="mud-text-secondary">Enable the Pawprint here</MudText>
                 }
-            </MudSelect>
+                <MudButtonGroup Color="Color.Primary" OverrideStyles="false">
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@(_selectedPawprint.Enabled)"
+                               OnClick="_ => { _selectedPawprint.Enabled = true; ModuleConfig.SaveDeferred(); }">Enabled</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@(!_selectedPawprint.Enabled)"
+                               OnClick="_ => { _selectedPawprint.Enabled = false; _pawprintConnection.Disconnect(); ModuleConfig.SaveDeferred(); }">Disabled</MudButton>
+                </MudButtonGroup>
+            </MudStack>
+            <MudStack Class="flex-grow-1">
+                @if (_selectedPawprint.TriggerMode == NothingMode.TriggerMode)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Warning" Class="mud-text-secondary">Select a Trigger Type to continue</MudText>
+                }
+                <MudSelect FullWidth="true" Value="_selectedPawprint.TriggerMode" T="byte"
+                           Variant="Variant.Outlined" Label="Trigger Type"
+                           ValueChanged="value => { OnPawprintTriggerModeChange(value, _selectedPawprint); }">
+                    @foreach (var type in _triggerTypes)
+                    {
+                        <MudSelectItem Value="@type.Key">
+                            <MudIcon Icon="@GetTriggerIcon(type.Key)"></MudIcon>
+                            @type.Value
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudStack>
         </MudStack>
 
         <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px;">
-
             <MudGrid Spacing="4" Justify="Justify.SpaceEvenly">
-                @if (!ModuleConfig.Config.PawprintsConfig.Actions.Any())
-                {
+            @if (!ModuleConfig.Config.PawprintsConfig.Actions.Any())
+            {
+                <MudItem xs="12">
+                    <MudText Color="Color.Warning">No <MudLink Href="/dash/module/openshock2coyote/Actions">Actions</MudLink> yet, create one first</MudText>
+                </MudItem>
+            }
+            @switch (_selectedPawprint.TriggerMode)
+            {
+                case ExternalVoltageDetectionTrigger.TriggerMode:
+                    var externalVoltage = _selectedPawprint.ExternalVoltageTrigger;
                     <MudItem xs="12">
-                        <MudText Color="Color.Warning">No <MudLink Href="/dash/module/openshock2coyote/Actions">Actions</MudLink> yet, create one first</MudText>
+                        <MudButtonGroup Color="Color.Primary" OverrideStyles="false">
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@(externalVoltage.IsHighImpedance)"
+                                       OnClick="_ => { externalVoltage.IsHighImpedance = true; OnPawprintSettingsChange(); }">High Level</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@(!externalVoltage.IsHighImpedance)"
+                                       OnClick="_ => { externalVoltage.IsHighImpedance = false; OnPawprintSettingsChange(); }">High Impedance</MudButton>
+                        </MudButtonGroup>
                     </MudItem>
-                }
-                @switch (_selectedPawprint.TriggerMode)
-                {
-                    case ExternalVoltageDetectionTrigger.TriggerMode:
-                        var externalVoltage = _selectedPawprint.ExternalVoltageTrigger;
-                        <MudItem xs="12">
-                            <MudButtonGroup Color="Color.Primary" OverrideStyles="false">
-                                <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@(externalVoltage.IsHighImpedance)"
-                                           OnClick="_ => { externalVoltage.IsHighImpedance = true; OnPawprintSettingsChange(); }">High Level</MudButton>
-                                <MudButton Variant="Variant.Filled" Color="Color.Error" Disabled="@(!externalVoltage.IsHighImpedance)"
-                                           OnClick="_ => { externalVoltage.IsHighImpedance = false; OnPawprintSettingsChange(); }">High Impedance</MudButton>
-                            </MudButtonGroup>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudDivider DividerType="DividerType.Middle"></MudDivider>
-                            <MudText Typo="Typo.h5">Voltage Range</MudText>
-                        </MudItem>
+                    <MudItem xs="12">
+                        <MudDivider DividerType="DividerType.Middle"></MudDivider>
+                        <MudText Typo="Typo.h5">Voltage Range</MudText>
+                    </MudItem>
 
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Size="Size.Large" Value="@externalVoltage.TargetVoltageRange.Min"
-                                       ValueChanged="value => { externalVoltage.TargetVoltageRange.Min = value; if (externalVoltage.TargetVoltageRange.Min > externalVoltage.TargetVoltageRange.Max) { externalVoltage.TargetVoltageRange.Max = externalVoltage.TargetVoltageRange.Min; } OnPawprintSettingsChange(); }"
-                                       Min="0" Max="255" Step="1">Minimum Voltage: @(externalVoltage.TargetVoltageRange.Min <= 232 ? Math.Round(Math.Round(externalVoltage.TargetVoltageRange.Min / 8.0) * 0.07, 2) : 2.1)</MudSlider>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Size="Size.Large" Value="@externalVoltage.TargetVoltageRange.Max"
-                                       ValueChanged="value => { externalVoltage.TargetVoltageRange.Max = value; if (externalVoltage.TargetVoltageRange.Min > externalVoltage.TargetVoltageRange.Max) { externalVoltage.TargetVoltageRange.Min = externalVoltage.TargetVoltageRange.Max; } OnPawprintSettingsChange(); }"
-                                       Min="0" Max="255" Step="1">Maximum Voltage: @(externalVoltage.TargetVoltageRange.Max <= 232 ? Math.Round(Math.Round(externalVoltage.TargetVoltageRange.Max / 8.0) * 0.07, 2) : 2.1)</MudSlider>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudSlider T="byte" Step="1" Value="@externalVoltage.ParameterMappingRange"
-                                       ValueChanged="value => { externalVoltage.ParameterMappingRange = value; OnPawprintSettingsChange(); }"
-                                       Min="0" Max="255" Size="Size.Large">Parameter Value Range: @externalVoltage.ParameterMappingRange</MudSlider>
-                        </MudItem>
-                        break;
-                    case ProbabilityTrigger.TriggerMode:
-                        var probability = _selectedPawprint.ProbabilityTrigger;
-                        <MudItem xs="12">
-                            <MudSlider T="double" Min="0" Max="100" Step="0.1" Size="Size.Large"
-                                       Value="@CooldownToSlider(probability.CooldownSeconds)"
-                                       ValueChanged="value => { probability.CooldownSeconds = SliderToCooldown(value); OnPawprintSettingsChange(); }">
-                                Cooldown: @FormatCooldown(probability.CooldownSeconds)
-                            </MudSlider>
-                        </MudItem>
-                        var sum = probability.TriggerProbabilities.Select(b => (int)b).Sum();
-                        <MudItem xs="12">
-                            @if (sum > 200)
-                            {
-                                <MudText Color="Color.Warning">Sum of Probabilities above 100%: @(sum / 2)</MudText>
-                            }
-                            else
-                            {
-                                <MudText Color="Color.Success">Sum of Probabilities below 100%: @(sum / 2)</MudText>
-                            }
-                        </MudItem>
-                        for (var i = 0; i < probability.TriggerProbabilities.Length; i++)
+                    <MudItem xs="6">
+                        <MudSlider T="byte" Size="Size.Large" Value="@externalVoltage.TargetVoltageRange.Min"
+                                   ValueChanged="value => { externalVoltage.TargetVoltageRange.Min = value; if (externalVoltage.TargetVoltageRange.Min > externalVoltage.TargetVoltageRange.Max) { externalVoltage.TargetVoltageRange.Max = externalVoltage.TargetVoltageRange.Min; } OnPawprintSettingsChange(); }"
+                                   Min="0" Max="255" Step="1">Minimum Voltage: @(externalVoltage.TargetVoltageRange.Min <= 232 ? Math.Round(Math.Round(externalVoltage.TargetVoltageRange.Min / 8.0) * 0.07, 2) : 2.1)</MudSlider>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudSlider T="byte" Size="Size.Large" Value="@externalVoltage.TargetVoltageRange.Max"
+                                   ValueChanged="value => { externalVoltage.TargetVoltageRange.Max = value; if (externalVoltage.TargetVoltageRange.Min > externalVoltage.TargetVoltageRange.Max) { externalVoltage.TargetVoltageRange.Min = externalVoltage.TargetVoltageRange.Max; } OnPawprintSettingsChange(); }"
+                                   Min="0" Max="255" Step="1">Maximum Voltage: @(externalVoltage.TargetVoltageRange.Max <= 232 ? Math.Round(Math.Round(externalVoltage.TargetVoltageRange.Max / 8.0) * 0.07, 2) : 2.1)</MudSlider>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudSlider T="byte" Step="1" Value="@externalVoltage.ParameterMappingRange"
+                                   ValueChanged="value => { externalVoltage.ParameterMappingRange = value; OnPawprintSettingsChange(); }"
+                                   Min="0" Max="255" Size="Size.Large">Parameter Value Range: @externalVoltage.ParameterMappingRange</MudSlider>
+                    </MudItem>
+                    break;
+                case ProbabilityTrigger.TriggerMode:
+                    var probability = _selectedPawprint.ProbabilityTrigger;
+                    <MudItem xs="12">
+                        <MudSlider T="double" Min="0" Max="100" Step="0.1" Size="Size.Large"
+                                   Value="@CooldownToSlider(probability.CooldownSeconds)"
+                                   ValueChanged="value => { probability.CooldownSeconds = SliderToCooldown(value); OnPawprintSettingsChange(); }">
+                            Cooldown: @FormatCooldown(probability.CooldownSeconds)
+                        </MudSlider>
+                    </MudItem>
+                    var sum = probability.TriggerProbabilities.Select(b => (int)b).Sum();
+                    <MudItem xs="12">
+                        @if (sum > 200)
                         {
-                            var i1 = i;
-                            IReadOnlyCollection<Guid> actions = probability.ProbabilityActions[i1];
-                            <MudItem xs="6">
-                                <MudSlider T="byte" Step="1" Value="@probability.TriggerProbabilities[i1]"
-                                           ValueChanged="value => { probability.TriggerProbabilities[i1] = value; OnPawprintSettingsChange(); }"
-                                           Min="0" Max="200" Size="Size.Medium">Event @i1: @(probability.TriggerProbabilities[i1] / 2)%</MudSlider>
-                            </MudItem>
-                            <MudItem xs="6">
-                                <MudSelect SelectedValues="actions" T="Guid"
-                                           Variant="Variant.Outlined" Label="Triggered Actions"
-                                           MultiSelection="true" MultiSelectionTextFunc="@(GetMultiSelectionActionText)"
-                                           SelectedValuesChanged="value => { if (value != null) { probability.ProbabilityActions[i1] = [.. value]; actions = value; } ModuleConfig.SaveDeferred(); }">
-                                    @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
-                                    {
-                                        <MudSelectItem T="Guid" Value="@action.Guid">@action.Name</MudSelectItem>
-                                    }
-                                </MudSelect>
-                            </MudItem>
+                            <MudText Color="Color.Warning">Sum of Probabilities above 100%: @(sum / 2)</MudText>
                         }
-
-                        break;
-                    case PressReleaseTriggerAndAccelerationAngleTrigger.TriggerMode:
-                        var button = _selectedPawprint.PressReleaseTriggerAndAccelerationAngleTrigger;
-                        IReadOnlyCollection<Guid> actionsPressRelease = button.ActionsOnPressRelease;
-                        IReadOnlyCollection<Guid> actionsAngleAcceleration = button.ActionsOnAngleAcceleration;
+                        else
+                        {
+                            <MudText Color="Color.Success">Sum of Probabilities below 100%: @(sum / 2)</MudText>
+                        }
+                    </MudItem>
+                    for (var i = 0; i < probability.TriggerProbabilities.Length; i++)
+                    {
+                        var i1 = i;
+                        IReadOnlyCollection<Guid> actions = probability.ProbabilityActions[i1];
                         <MudItem xs="6">
-                            <MudButtonGroup Color="Color.Primary">
-                                <MudButton Variant="Variant.Filled" Disabled="@(button.PressReleaseMode == PressReleaseTriggerMode.Press)"
-                                           OnClick="_ => { button.PressReleaseMode = PressReleaseTriggerMode.Press; OnPawprintSettingsChange(); }">Press</MudButton>
-                                <MudButton Variant="Variant.Filled" Disabled="@(button.PressReleaseMode == PressReleaseTriggerMode.Release)"
-                                           OnClick="_ => { button.PressReleaseMode = PressReleaseTriggerMode.Release; OnPawprintSettingsChange(); }">Release</MudButton>
-                            </MudButtonGroup>
+                            <MudSlider T="byte" Step="1" Value="@probability.TriggerProbabilities[i1]"
+                                       ValueChanged="value => { probability.TriggerProbabilities[i1] = value; OnPawprintSettingsChange(); }"
+                                       Min="0" Max="200" Size="Size.Medium">Event @i1: @(probability.TriggerProbabilities[i1] / 2)%</MudSlider>
                         </MudItem>
                         <MudItem xs="6">
-                            <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled">
-                                <MudButton Variant="Variant.Filled" Disabled="@(button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Acceleration)"
-                                           OnClick="_ => { button.AccelerationOrAngleSubmode = AccelerationAngleSubmode.Acceleration; OnPawprintSettingsChange(); }">Acceleration</MudButton>
-                                <MudButton Variant="Variant.Filled" Disabled="@(button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Angle)"
-                                           OnClick="_ => { button.AccelerationOrAngleSubmode = AccelerationAngleSubmode.Angle; OnPawprintSettingsChange(); }">Angle</MudButton>
-                                <MudButton Variant="Variant.Filled" Disabled="@(button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Disabled)"
-                                           OnClick="_ => { button.AccelerationOrAngleSubmode = AccelerationAngleSubmode.Disabled; OnPawprintSettingsChange(); }">Disabled</MudButton>
-                            </MudButtonGroup>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Step="1" Value="@button.ActivationDebounce"
-                                       ValueChanged="value => { button.ActivationDebounce = value; OnPawprintSettingsChange(); }"
-                                       Min="0" Max="7" Size="Size.Large">Activation Debounce: @($"{button.ActivationDebounce / 10.0:0.0}")sec</MudSlider>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Step="1" Value="@button.DeactivationDebounce"
-                                       ValueChanged="value => { button.DeactivationDebounce = value; OnPawprintSettingsChange(); }"
-                                       Min="0" Max="7" Size="Size.Large">Deactivation Debounce: @($"{button.DeactivationDebounce / 10.0:0.0}")sec</MudSlider>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
-                                       Value="@button.PressReleaseParameterIncreaseOnActivation"
-                                       ValueChanged="value => { button.PressReleaseParameterIncreaseOnActivation = value; OnPawprintSettingsChange(); }">
-                                Increase On Activation: @button.PressReleaseParameterIncreaseOnActivation
-                            </MudSlider>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Min="0" Max="120" Step="1" Size="Size.Large"
-                                       Value="@button.PressReleaseParameterIncreaseRateWhileActive"
-                                       ValueChanged="value => { button.PressReleaseParameterIncreaseRateWhileActive = value; OnPawprintSettingsChange(); }">
-                                Active Increase Rate: @(FormatIncreaseRate(button.PressReleaseParameterIncreaseRateWhileActive))
-                            </MudSlider>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
-                                       Value="@button.PressReleaseParameterDecreaseOnDeactivation"
-                                       ValueChanged="value => { button.PressReleaseParameterDecreaseOnDeactivation = value; OnPawprintSettingsChange(); }">
-                                Decrease On Deactivation: @button.PressReleaseParameterDecreaseOnDeactivation
-                            </MudSlider>
-                        </MudItem>
-                        <MudItem xs="6">
-                            <MudSlider T="byte" Min="0" Max="120" Step="1" Size="Size.Large"
-                                       Value="@button.PressReleaseParameterDecreaseRateAfterDeactivation"
-                                       ValueChanged="value => { button.PressReleaseParameterDecreaseRateAfterDeactivation = value; OnPawprintSettingsChange(); }">
-                                Deactivated Decrease Rate: @(FormatIncreaseRate(button.PressReleaseParameterDecreaseRateAfterDeactivation))
-                            </MudSlider>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudSelect SelectedValues="actionsPressRelease" T="Guid"
-                                       Variant="Variant.Outlined" Label="Triggered Actions When Pressing"
+                            <MudSelect SelectedValues="actions" T="Guid"
+                                       Variant="Variant.Outlined" Label="Triggered Actions"
                                        MultiSelection="true" MultiSelectionTextFunc="@(GetMultiSelectionActionText)"
-                                       SelectedValuesChanged="value => { if (value != null) { button.ActionsOnPressRelease = [.. value]; actionsPressRelease = value; } ModuleConfig.SaveDeferred(); }">
+                                       SelectedValuesChanged="value => { if (value != null) { probability.ProbabilityActions[i1] = [.. value]; actions = value; } ModuleConfig.SaveDeferred(); }">
                                 @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
                                 {
                                     <MudSelectItem T="Guid" Value="@action.Guid">@action.Name</MudSelectItem>
                                 }
                             </MudSelect>
                         </MudItem>
-                        switch (button.AccelerationOrAngleSubmode)
-                        {
-                            case AccelerationAngleSubmode.Angle:
-                                <MudItem xs="12">
-                                    <MudButton Variant="Variant.Filled" Style="margin:auto;"
-                                               StartIcon="@Icons.Material.Filled.RotateLeft" Color="Color.Primary"
-                                               OnClick="StartAutoAngle">Automatic Angle Detection</MudButton>
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
-                                               Value="@button.RangeX.Min"
-                                               ValueChanged="value => { button.RangeX.Min = value; if (button.RangeX.Min > button.RangeX.Max) { button.RangeX.Max = button.RangeX.Min; } OnPawprintSettingsChange(); }">
-                                        Range X Min: @button.RangeX.Min
-                                    </MudSlider>
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
-                                               Value="@button.RangeX.Max"
-                                               ValueChanged="value => { button.RangeX.Max = value; if (button.RangeX.Min > button.RangeX.Max) { button.RangeX.Min = button.RangeX.Max; } OnPawprintSettingsChange(); }">
-                                        Range X Max: @button.RangeX.Max
-                                    </MudSlider>
-                                </MudItem>
-                                <MudItem xs="12">
-                                    <MudText Color="Color.Warning">@GetInformationTextAngleRange(button.RangeX)</MudText>
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
-                                               Value="@button.RangeY.Min"
-                                               ValueChanged="value => { button.RangeY.Min = value; if (button.RangeY.Min > button.RangeY.Max) { button.RangeY.Max = button.RangeY.Min; } OnPawprintSettingsChange(); }">
-                                        Range Y Min: @button.RangeY.Min
-                                    </MudSlider>
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
-                                               Value="@button.RangeY.Max"
-                                               ValueChanged="value => { button.RangeY.Max = value; if (button.RangeY.Min > button.RangeY.Max) { button.RangeY.Min = button.RangeY.Max; } OnPawprintSettingsChange(); }">
-                                        Range Y Max: @button.RangeY.Max
-                                    </MudSlider>
-                                </MudItem>
-                                <MudItem xs="12">
-                                    <MudText Color="Color.Warning">@GetInformationTextAngleRange(button.RangeY)</MudText>
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
-                                               Value="@button.RangeZ.Min"
-                                               ValueChanged="value => { button.RangeZ.Min = value; if (button.RangeZ.Min > button.RangeZ.Max) { button.RangeZ.Max = button.RangeZ.Min; } OnPawprintSettingsChange(); }">
-                                        Range Z Min: @button.RangeZ.Min
-                                    </MudSlider>
-                                </MudItem>
-                                <MudItem xs="6">
-                                    <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
-                                               Value="@button.RangeZ.Max"
-                                               ValueChanged="value => { button.RangeZ.Max = value; if (button.RangeZ.Min > button.RangeZ.Max) { button.RangeZ.Min = button.RangeZ.Max; } OnPawprintSettingsChange(); }">
-                                        Range Z Max: @button.RangeZ.Max
-                                    </MudSlider>
-                                </MudItem>
-                                <MudItem xs="12">
-                                    <MudText Color="Color.Warning">@GetInformationTextAngleRange(button.RangeZ)</MudText>
-                                </MudItem>
-                                break;
-                            case AccelerationAngleSubmode.Acceleration:
-                                <MudItem xs="12">
-                                    <MudSwitch @bind-Value="@button.IsAboveAccelerationMode" @bind-Value:after="@OnPawprintSettingsChange">Activate @button.AccelerationDetectionMode threshold</MudSwitch>
-                                </MudItem>
-                                <MudItem xs="12">
-                                    <MudSlider T="ushort" Min="0" Max="400" Step="1" Size="Size.Large"
-                                               Value="@button.AccelerationThreshold"
-                                               ValueChanged="value => { button.AccelerationThreshold = value; OnPawprintSettingsChange(); }">
-                                        Detection Threshold: @button.AccelerationThreshold
-                                    </MudSlider>
-                                </MudItem>
-                                break;
-                            default:
-                                break;
-                        }
+                    }
 
-                        <MudItem xs="12">
-                            <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
-                                       Value="@button.AccelerationAngleParameterMappingRange"
-                                       ValueChanged="value => { button.AccelerationAngleParameterMappingRange = value; OnPawprintSettingsChange(); }">
-                                Parameter Mapping Range: @(button.AccelerationAngleParameterMappingRange)
-                            </MudSlider>
-                        </MudItem>
-                        <MudItem xs="12">
-                            <MudSelect SelectedValues="actionsAngleAcceleration" T="Guid"
-                                       Variant="Variant.Outlined" Label="Triggered Actions in Submode "
-                                       MultiSelection="true" MultiSelectionTextFunc="@(GetMultiSelectionActionText)"
-                                       SelectedValuesChanged="value => { if (value != null) { button.ActionsOnAngleAcceleration = [.. value]; actionsAngleAcceleration = value; } ModuleConfig.SaveDeferred(); }">
-                                @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
-                                {
-                                    <MudSelectItem T="Guid" Value="@action.Guid">@action.Name</MudSelectItem>
-                                }
-                            </MudSelect>
-                        </MudItem>
-                        break;
+                    break;
+                case PressReleaseTriggerAndAccelerationAngleTrigger.TriggerMode:
+                    var button = _selectedPawprint.PressReleaseTriggerAndAccelerationAngleTrigger;
+                    IReadOnlyCollection<Guid> actionsPressRelease = button.ActionsOnPressRelease;
+                    IReadOnlyCollection<Guid> actionsAngleAcceleration = button.ActionsOnAngleAcceleration;
+                    <MudItem xs="12">
+                        <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled">
+                            <MudButton Variant="Variant.Filled" Disabled="@(button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Acceleration)"
+                                       OnClick="_ => { button.AccelerationOrAngleSubmode = AccelerationAngleSubmode.Acceleration; OnPawprintSettingsChange(); }">Acceleration</MudButton>
+                            <MudButton Variant="Variant.Filled" Disabled="@(button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Angle)"
+                                       OnClick="_ => { button.AccelerationOrAngleSubmode = AccelerationAngleSubmode.Angle; OnPawprintSettingsChange(); }">Angle</MudButton>
+                            <MudButton Variant="Variant.Filled" Disabled="@(button.AccelerationOrAngleSubmode == AccelerationAngleSubmode.Disabled)"
+                                       OnClick="_ => { button.AccelerationOrAngleSubmode = AccelerationAngleSubmode.Disabled; OnPawprintSettingsChange(); }">Disabled</MudButton>
+                        </MudButtonGroup>
+                    </MudItem>
+                    <MudExpansionPanels Outlined="false" Elevation="0">
+                        <MudExpansionPanel Text="Button">
+                            <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px">
+                                <MudGrid Spacing="4" Justify="Justify.SpaceEvenly">
+                                    <MudItem xs="12">
+                                        <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled">
+                                            <MudButton Disabled="@(button.PressReleaseMode == PressReleaseTriggerMode.Press)"
+                                                       OnClick="_ => { button.PressReleaseMode = PressReleaseTriggerMode.Press; OnPawprintSettingsChange(); }">Press</MudButton>
+                                            <MudButton Disabled="@(button.PressReleaseMode == PressReleaseTriggerMode.Release)"
+                                                       OnClick="_ => { button.PressReleaseMode = PressReleaseTriggerMode.Release; OnPawprintSettingsChange(); }">Release</MudButton>
+                                        </MudButtonGroup>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="byte" Step="1" Value="@button.ActivationDebounce"
+                                                   ValueChanged="value => { button.ActivationDebounce = value; OnPawprintSettingsChange(); }"
+                                                   Min="0" Max="7" Size="Size.Large">Activation Debounce: @($"{button.ActivationDebounce / 10.0:0.0}")sec</MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="byte" Step="1" Value="@button.DeactivationDebounce"
+                                                   ValueChanged="value => { button.DeactivationDebounce = value; OnPawprintSettingsChange(); }"
+                                                   Min="0" Max="7" Size="Size.Large">Deactivation Debounce: @($"{button.DeactivationDebounce / 10.0:0.0}")sec</MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
+                                                   Value="@button.PressReleaseParameterIncreaseOnActivation"
+                                                   ValueChanged="value => { button.PressReleaseParameterIncreaseOnActivation = value; OnPawprintSettingsChange(); }">
+                                            Increase On Activation: @button.PressReleaseParameterIncreaseOnActivation
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="byte" Min="0" Max="120" Step="1" Size="Size.Large"
+                                                   Value="@button.PressReleaseParameterIncreaseRateWhileActive"
+                                                   ValueChanged="value => { button.PressReleaseParameterIncreaseRateWhileActive = value; OnPawprintSettingsChange(); }">
+                                            Active Increase Rate: @(FormatIncreaseRate(button.PressReleaseParameterIncreaseRateWhileActive))
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
+                                                   Value="@button.PressReleaseParameterDecreaseOnDeactivation"
+                                                   ValueChanged="value => { button.PressReleaseParameterDecreaseOnDeactivation = value; OnPawprintSettingsChange(); }">
+                                            Decrease On Deactivation: @button.PressReleaseParameterDecreaseOnDeactivation
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="byte" Min="0" Max="120" Step="1" Size="Size.Large"
+                                                   Value="@button.PressReleaseParameterDecreaseRateAfterDeactivation"
+                                                   ValueChanged="value => { button.PressReleaseParameterDecreaseRateAfterDeactivation = value; OnPawprintSettingsChange(); }">
+                                            Deactivated Decrease Rate: @(FormatIncreaseRate(button.PressReleaseParameterDecreaseRateAfterDeactivation))
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSelect SelectedValues="actionsPressRelease" T="Guid"
+                                                   Variant="Variant.Outlined" Label="Triggered Actions When Pressing"
+                                                   MultiSelection="true" MultiSelectionTextFunc="@(GetMultiSelectionActionText)"
+                                                   SelectedValuesChanged="value => { if (value != null) { button.ActionsOnPressRelease = [.. value]; actionsPressRelease = value; } ModuleConfig.SaveDeferred(); }">
+                                            @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
+                                            {
+                                                <MudSelectItem T="Guid" Value="@action.Guid">@action.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudPaper>
+                        </MudExpansionPanel>
+                        <MudExpansionPanel Text="Angle">
+                            <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px">
+                                <MudGrid Spacing="4" Justify="Justify.SpaceEvenly">
+                                    <MudItem xs="12">
+                                        <MudButton Variant="Variant.Filled" Style="margin:auto;"
+                                                   StartIcon="@Icons.Material.Filled.RotateLeft" Color="Color.Primary"
+                                                   OnClick="StartAutoAngle">Automatic Angle Detection</MudButton>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
+                                                   Value="@button.RangeX.Min"
+                                                   ValueChanged="value => { button.RangeX.Min = value; if (button.RangeX.Min > button.RangeX.Max) { button.RangeX.Max = button.RangeX.Min; } OnPawprintSettingsChange(); }">
+                                            Range X Min: @button.RangeX.Min
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
+                                                   Value="@button.RangeX.Max"
+                                                   ValueChanged="value => { button.RangeX.Max = value; if (button.RangeX.Min > button.RangeX.Max) { button.RangeX.Min = button.RangeX.Max; } OnPawprintSettingsChange(); }">
+                                            Range X Max: @button.RangeX.Max
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudText Color="Color.Warning">@GetInformationTextAngleRange(button.RangeX)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
+                                                   Value="@button.RangeY.Min"
+                                                   ValueChanged="value => { button.RangeY.Min = value; if (button.RangeY.Min > button.RangeY.Max) { button.RangeY.Max = button.RangeY.Min; } OnPawprintSettingsChange(); }">
+                                            Range Y Min: @button.RangeY.Min
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
+                                                   Value="@button.RangeY.Max"
+                                                   ValueChanged="value => { button.RangeY.Max = value; if (button.RangeY.Min > button.RangeY.Max) { button.RangeY.Min = button.RangeY.Max; } OnPawprintSettingsChange(); }">
+                                            Range Y Max: @button.RangeY.Max
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudText Color="Color.Warning">@GetInformationTextAngleRange(button.RangeY)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
+                                                   Value="@button.RangeZ.Min"
+                                                   ValueChanged="value => { button.RangeZ.Min = value; if (button.RangeZ.Min > button.RangeZ.Max) { button.RangeZ.Max = button.RangeZ.Min; } OnPawprintSettingsChange(); }">
+                                            Range Z Min: @button.RangeZ.Min
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudSlider T="sbyte" Min="-128" Max="127" Step="1" Size="Size.Large"
+                                                   Value="@button.RangeZ.Max"
+                                                   ValueChanged="value => { button.RangeZ.Max = value; if (button.RangeZ.Min > button.RangeZ.Max) { button.RangeZ.Min = button.RangeZ.Max; } OnPawprintSettingsChange(); }">
+                                            Range Z Max: @button.RangeZ.Max
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudText Color="Color.Warning">@GetInformationTextAngleRange(button.RangeZ)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
+                                                   Value="@button.AccelerationAngleParameterMappingRange"
+                                                   ValueChanged="value => { button.AccelerationAngleParameterMappingRange = value; OnPawprintSettingsChange(); }">
+                                            Parameter Mapping Range: @(button.AccelerationAngleParameterMappingRange)
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSelect SelectedValues="actionsAngleAcceleration" T="Guid"
+                                                   Variant="Variant.Outlined" Label="Triggered Actions in Submode "
+                                                   MultiSelection="true" MultiSelectionTextFunc="@(GetMultiSelectionActionText)"
+                                                   SelectedValuesChanged="value => { if (value != null) { button.ActionsOnAngleAcceleration = [.. value]; actionsAngleAcceleration = value; } ModuleConfig.SaveDeferred(); }">
+                                            @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
+                                            {
+                                                <MudSelectItem T="Guid" Value="@action.Guid">@action.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </MudItem>
+                                </MudGrid>
+                            </MudPaper>
+                        </MudExpansionPanel>
+                        <MudExpansionPanel Text="Acceleration">
+                            <MudPaper Outlined="true" Class="rounded-lg mud-paper-padding d-flex" Style="gap:16px">
+                                <MudGrid Spacing="4" Justify="Justify.SpaceEvenly">
+                                    <MudItem xs="12">
+                                        <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled">
+                                            <MudButton Disabled="@(button.AccelerationDetectionMode == AccelerationDetectionMode.Above)"
+                                                       OnClick="_ => { button.AccelerationDetectionMode = AccelerationDetectionMode.Above; OnPawprintSettingsChange(); }">Above</MudButton>
+                                            <MudButton Disabled="@(button.AccelerationDetectionMode == AccelerationDetectionMode.Below)"
+                                                       OnClick="_ => { button.AccelerationDetectionMode = AccelerationDetectionMode.Below; OnPawprintSettingsChange(); }">Below</MudButton>
+                                        </MudButtonGroup>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSlider T="ushort" Min="0" Max="400" Step="1" Size="Size.Large"
+                                                   Value="@button.AccelerationThreshold"
+                                                   ValueChanged="value => { button.AccelerationThreshold = value; OnPawprintSettingsChange(); }">
+                                            Detection Threshold: @button.AccelerationThreshold
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSlider T="byte" Min="0" Max="255" Step="1" Size="Size.Large"
+                                                   Value="@button.AccelerationAngleParameterMappingRange"
+                                                   ValueChanged="value => { button.AccelerationAngleParameterMappingRange = value; OnPawprintSettingsChange(); }">
+                                            Parameter Mapping Range: @(button.AccelerationAngleParameterMappingRange)
+                                        </MudSlider>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudSelect SelectedValues="actionsAngleAcceleration" T="Guid"
+                                                   Variant="Variant.Outlined" Label="Triggered Actions in Submode "
+                                                   MultiSelection="true" MultiSelectionTextFunc="@(GetMultiSelectionActionText)"
+                                                   SelectedValuesChanged="value => { if (value != null) { button.ActionsOnAngleAcceleration = [.. value]; actionsAngleAcceleration = value; } ModuleConfig.SaveDeferred(); }">
+                                            @foreach (var action in ModuleConfig.Config.PawprintsConfig.Actions)
+                                            {
+                                                <MudSelectItem T="Guid" Value="@action.Guid">@action.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </MudItem>
+                                    </MudGrid>
+                                </MudPaper> 
+                            </MudExpansionPanel>
+                    </MudExpansionPanels>
+                    break;
                     case RandomReactionTrigger.TriggerMode:
                         var reaction = _selectedPawprint.RandomReactionTrigger;
                         <MudItem xs="6">
@@ -469,6 +521,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _selectedPawprint = ModuleConfig.Config.PawprintsConfig.Pawprints.FirstOrDefault(p => p.Enabled, ModuleConfig.Config.PawprintsConfig.Pawprints[0]);
+        await OnPawprintSelectedChanged();
         if (FlowManager.PawprintService == null) return;
         foreach (var pawprint in FlowManager.PawprintService.PawprintConnections)
         {

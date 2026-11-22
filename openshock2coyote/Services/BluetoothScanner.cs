@@ -36,12 +36,12 @@ public sealed class BluetoothScanner(IBleManager bleManager,
                     return;
                 }
                 
-                logger.LogInformation(
+                /*logger.LogInformation(
                     "Discovered {Uuid}, Instance: {Instance}, Status: {Status}",
                     peripheral.Uuid,
                     RuntimeHelpers.GetHashCode(peripheral),
                     peripheral.Status
-                );
+                );*/
 
                 _devices[peripheral.Uuid] = peripheral;
             },

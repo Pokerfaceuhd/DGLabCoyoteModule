@@ -7,6 +7,7 @@ using openshock2coyote.Config.Actions;
 using openshock2coyote.Config.Triggers;
 using openshock2coyote.Utils;
 using openshock2coyote.Utils.PawprintMessages.ReadMessages;
+using Shiny.BluetoothLE;
 
 namespace openshock2coyote.Services;
 
@@ -18,8 +19,9 @@ public class PawprintService
     private readonly ILogger<PawprintConnection> _pawprintConnectionLogger;
     private readonly BluetoothScanner _bluetoothScanner;
     private readonly IOpenShockService _openShockService;
-    public bool TemporaryConnect = false;
-    
+    private readonly IBleManager _bleManager;
+    public bool TemporaryConnect;
+    private Dictionary<string, int> _knownGoodPawprintAddresses = [];
     
     public Dictionary<byte, PawprintConnection> PawprintConnections { get; }
 
@@ -29,12 +31,14 @@ public class PawprintService
         ILogger<PawprintService> logger,
         ILogger<PawprintConnection> pawprintConnectionLogger,
         BluetoothScanner bluetoothScanner,
+        IBleManager bleManager,
         IOpenShockService openShockService)
     {
         _config = config;
         _logger = logger;
         _pawprintConnectionLogger = pawprintConnectionLogger;
         _bluetoothScanner = bluetoothScanner;
+        _bleManager = bleManager;
         _openShockService = openShockService;
         PawprintConnections = new Dictionary<byte, PawprintConnection>();
         CreatePawprintConnections();
@@ -250,11 +254,26 @@ public class PawprintService
         
         var connectedPawprints = PawprintConnections
             .Where(pc => pc.Value.State.Value == WebsocketConnectionState.Connected)
-            .Select(pc => pc.Value.CurrentlyConnectedDeviceId);
-
-        var enumerable = connectedPawprints as string[] ?? connectedPawprints.ToArray();
+            .Select(pc => pc.Value.CurrentlyConnectedDeviceId).ToArray();
+        
         var bluetoothDevices = _bluetoothScanner.Devices.Where(device =>
-            device.Name is "47L120300" && !enumerable.Contains(device.Uuid)).ToArray();
+            device.Name is "47L120300" && !connectedPawprints.Contains(device.Uuid)).ToArray();
+
+        if (bluetoothDevices.Length == 0)
+        {
+            
+            bluetoothDevices =
+            [
+                .. _knownGoodPawprintAddresses.Keys
+                    .Where(device => !connectedPawprints.Contains(device))
+                    .Select(address => _bleManager.GetKnownPeripheral(address))
+                    .OfType<IPeripheral>()
+            ];
+            if (bluetoothDevices.Length != 0)
+            {
+                _logger.LogInformation("No devices found in Scan, falling back to known Devices");
+            }
+        }
         
         foreach (var bluetoothDevice in bluetoothDevices)
         {
@@ -272,19 +291,24 @@ public class PawprintService
             try
             {
                 await connection.OpenAsync(bluetoothDevice);
-                if (TemporaryConnect)
-                {
-                    TemporaryConnect = false;
-                }
+                _knownGoodPawprintAddresses[bluetoothDevice.Uuid] = 0;
+                TemporaryConnect = false;
                 break;
             }
             catch (Exception ex)
             {
+                if (_knownGoodPawprintAddresses.ContainsKey(bluetoothDevice.Uuid))
+                {
+                    _knownGoodPawprintAddresses[bluetoothDevice.Uuid] += 1;
+                    if (_knownGoodPawprintAddresses[bluetoothDevice.Uuid] >= 5)
+                    {
+                        _knownGoodPawprintAddresses.Remove(bluetoothDevice.Uuid);
+                    }
+                }
                 _logger.LogWarning(ex,
                     "Failed to connect to Pawprint {DeviceId}",
                     bluetoothDevice.Uuid);
             }
-            
             _bluetoothScanner.RemoveDevice(bluetoothDevice.Uuid);
         }
     }

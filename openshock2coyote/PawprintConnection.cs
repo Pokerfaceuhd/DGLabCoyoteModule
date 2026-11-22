@@ -115,26 +115,15 @@ public class PawprintConnection : IAsyncDisposable
             CurrentlyConnectedDeviceId = peripheral.Uuid;
             _state.Value = WebsocketConnectionState.Connecting;
 
-            //var strength = await peripheral.ReadRssiAsync(cancellationToken, 500);
+            var strength = await peripheral.ReadRssiAsync(cancellationToken, 500);
             
             _logger.LogInformation(
                 "Connecting to Pawprint: {DeviceName} ({DeviceId}) Strength {Rssi}dBm",
                 peripheral.Name,
                 peripheral.Uuid,
-                0);
-
-            // PawprintService handles reconnection itself.
-            _logger.LogInformation("connecting");
-            peripheral.WhenStatusChanged().Subscribe(status =>
-            {
-                _logger.LogInformation(
-                    "Bluetooth status changed: {Status} ({Uuid})",
-                    status,
-                    peripheral.Uuid
-                );
-            });
+                strength);
             
-            await peripheral.ConnectAsync(new ConnectionConfig(AutoConnect: false), cancellationToken);
+            await peripheral.ConnectAsync(new ConnectionConfig(AutoConnect: false), cancellationToken, TimeSpan.FromSeconds(5));
 
             _logger.LogInformation(
                 "Connected to Pawprint: {DeviceUuid}",
@@ -171,14 +160,11 @@ public class PawprintConnection : IAsyncDisposable
                         OnDisconnected(peripheral);
                     });
             
-            _logger.LogInformation("UpdatePawprintSettings");
-            
             while (!_receivedStartupMessage &&
                    _state.Value != WebsocketConnectionState.Disconnected)
             {
-                await Task.Delay(500);
+                await Task.Delay(500, cancellationToken);
             }
-            
             UpdatePawprintSettings();
         }
         catch
@@ -212,8 +198,34 @@ public class PawprintConnection : IAsyncDisposable
 
     public async Task Disconnect()
     {
-        _logger.LogInformation("Got disconnect");
-        if (_peripheral != null) await _peripheral.DisconnectAsync(timeout: new TimeSpan(0, 0, 5));
+        _logger.LogInformation("Disconnect requested");
+
+        // Interrupt an ongoing ConnectAsync or GATT operation immediately.
+        var activeCts = Volatile.Read(ref _connectionCts);
+
+        try
+        {
+            activeCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The connection was already cleaned up.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to cancel active connection");
+        }
+
+        await _connectionLock.WaitAsync();
+
+        try
+        {
+            await DisconnectCoreAsync();
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
     }
     
     public void UpdatePawprintSettings()
@@ -334,39 +346,73 @@ public class PawprintConnection : IAsyncDisposable
     private async Task DisconnectCoreAsync()
     {
         _logger.LogInformation("Disconnecting Pawprint connection");
-        
-        _state.Value = WebsocketConnectionState.Disconnected;
-        
-        if (_connectionCts != null)
-        {
-            await _connectionCts.CancelAsync();
-            _connectionCts.Dispose();
-            _connectionCts = null;
-        }
 
+        // Capture current references before clearing them.
+        var peripheral = _peripheral;
+        var connectionCts = _connectionCts;
+
+        // Prevent further operations from using these references.
+        _peripheral = null;
+        _connectionCts = null;
+
+        // Reset connection state.
+        _state.Value = WebsocketConnectionState.Disconnected;
+        CurrentlyConnectedDeviceId = "";
+        _battery.Value = 0;
+        _receivedStartupMessage = false;
+
+        // Stop pending configuration updates.
+        _configTimer?.Change(
+            Timeout.InfiniteTimeSpan,
+            Timeout.InfiniteTimeSpan);
+
+        // Dispose subscriptions.
         _notificationSubscription?.Dispose();
         _notificationSubscription = null;
 
         _disconnectSubscription?.Dispose();
         _disconnectSubscription = null;
 
-        if (_peripheral != null)
+        // Cancel and dispose the connection token.
+        if (connectionCts != null)
         {
             try
             {
-                // Also cancels any pending automatic reconnect.
-                _peripheral.CancelConnection();
+                await connectionCts.CancelAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error disconnecting Pawprint");
+                _logger.LogWarning(ex, "Error cancelling connection token");
             }
-
-            _peripheral = null;
+            finally
+            {
+                connectionCts.Dispose();
+            }
         }
 
-        CurrentlyConnectedDeviceId = "";
-        _state.Value = WebsocketConnectionState.Disconnected;
+        if (peripheral == null)
+            return;
+
+        // Actually disconnect from the device.
+        try
+        {
+            await peripheral.DisconnectAsync(
+                timeout: TimeSpan.FromSeconds(5));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disconnecting Pawprint");
+
+            // Fallback: cancel any remaining connection request.
+            try
+            {
+                peripheral.CancelConnection();
+            }
+            catch (Exception cancelEx)
+            {
+                _logger.LogWarning(cancelEx, "Error cancelling peripheral connection");
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
